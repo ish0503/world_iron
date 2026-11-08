@@ -37,4 +37,6 @@ export interface Province {
   /** 마지막 월간 계산 결과 */
   food: number; ic: number; gdp: number;
   active: boolean;            // 바다에 잠긴 프로빈스 = false
+  /** 수용력 배율 (실제 세계 시나리오의 인구 밀집 지역) */
+  capMul?: number;
 }

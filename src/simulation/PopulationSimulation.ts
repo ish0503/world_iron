@@ -2,6 +2,7 @@ import type { WorldState } from '../types/World';
 import type { Province } from '../types/Province';
 import { TERRAINS } from '../data/terrain';
 import { clamp } from './rng';
+import { deployedBy } from './WorldHelpers';
 
 export function provinceCapacity(w: WorldState, p: Province) {
   const c = p.owner >= 0 ? w.countries[p.owner] : null;
@@ -12,6 +13,7 @@ export function provinceCapacity(w: WorldState, p: Province) {
   if (p.coastal) cap *= 1.2; if (p.river) cap *= 1.3;
   cap += (b.factory || 0) * 150_000 + (b.market || 0) * 100_000;
   if (c && c.capital === p.id) cap *= 2.2;
+  if (p.capMul) cap *= p.capMul;
   return Math.max(2000, cap);
 }
 
@@ -57,9 +59,10 @@ export function monthlyPopulation(w: WorldState) {
 
 /** 국가 인력 (징병 가능 인구) */
 export function monthlyManpower(w: WorldState) {
+  const dep = deployedBy(w);
   for (const c of w.countries) {
     if (!c.alive) continue;
-    const deployed = w.divisions.reduce((a, d) => a + (d.owner === c.id ? d.strength : 0), 0);
+    const deployed = dep[c.id];
     const max = c.population * c.conscription;
     const target = Math.max(0, max - deployed);
     c.manpower = clamp(c.manpower + (target - c.manpower) * 0.12, 0, target);

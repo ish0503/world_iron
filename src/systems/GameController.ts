@@ -1,7 +1,7 @@
 import type { WorldState, GameMode } from '../types/World';
-import type { GenOptions } from '../simulation/WorldGen';
-import { generateWorld } from '../simulation/WorldGen';
-import { setupWorld, stepDay, bindRng } from '../simulation/SimulationEngine';
+import { createWorld, type CreateOptions } from '../simulation/WorldFactory';
+import { stepDay, bindRng, onAchievement } from '../simulation/SimulationEngine';
+import { ACHIEVEMENTS } from '../simulation/Extras';
 import { TimeManager } from '../simulation/TimeManager';
 import { onLog } from '../simulation/WorldHelpers';
 import { clearSupplyCache } from '../simulation/MilitarySimulation';
@@ -52,10 +52,16 @@ export class GameController {
   busy: { msg: string; p: number } | null = null;
 
   constructor() {
+    onAchievement(id => { const a = ACHIEVEMENTS[id]; if (a) pushToast(`${a.icon} 업적 달성: ${a.name}`, 'major'); });
     onLog((text, type, c) => {
       const w = this.world; if (!w) return;
+      const lvl = this.settings.notify;
+      if (lvl === 'off') return;
       const mine = w.player >= 0 && c === w.player;
-      if (type === 'major' || mine) pushToast(text, type, c);
+      const huge = type === 'major' && /세계대전|☢|대공황|세계 패권/.test(text);
+      if (lvl === 'all' && (type === 'major' || mine || type === 'war')) pushToast(text, type, c);
+      else if (lvl === 'major' && (type === 'major' || mine)) pushToast(text, type, c);
+      else if (lvl === 'mine' && (mine || huge)) pushToast(text, mine ? 'mine' : type, c);
     });
   }
 
@@ -65,7 +71,7 @@ export class GameController {
   updateSettings(p: Partial<Settings>) { this.settings = { ...this.settings, ...p }; saveSettings(this.settings); this.mapVersion++; this.emit(); }
 
   // ───── 월드 생성/로드 ─────
-  generate(opt: GenOptions): Promise<WorldState> {
+  generate(opt: CreateOptions): Promise<WorldState> {
     this.busy = { msg: '세계 생성 중...', p: 0 }; this.emit();
     return new Promise((resolve, reject) => {
       let worker: Worker | null = null;
@@ -73,7 +79,7 @@ export class GameController {
       const finish = (w: WorldState) => { worker?.terminate(); this.busy = null; this.setWorld(w); resolve(w); };
       if (!worker) {
         // 워커 미지원 환경: 메인 스레드에서 생성
-        setTimeout(() => { try { const w = generateWorld(opt); setupWorld(w); finish(w); } catch (e) { this.busy = null; this.emit(); reject(e); } }, 30);
+        setTimeout(() => { try { const w = createWorld(opt); finish(w); } catch (e) { this.busy = null; this.emit(); reject(e); } }, 30);
         return;
       }
       worker.onmessage = (e) => {
@@ -84,7 +90,7 @@ export class GameController {
       };
       worker.onerror = () => {
         worker?.terminate(); worker = null;
-        try { const w = generateWorld(opt); setupWorld(w); finish(w); } catch (e) { this.busy = null; this.emit(); reject(e); }
+        try { const w = createWorld(opt); finish(w); } catch (e) { this.busy = null; this.emit(); reject(e); }
       };
       worker.postMessage({ type: 'generate', opt });
     });
@@ -156,13 +162,16 @@ export class GameController {
   private tick(dt: number) {
     const w = this.world; if (!w || this.busy) return;
     const editor = w.mode === 'editor';
-    const days = editor ? 0 : this.time.advance(dt);
-    if (days > 0) {
+    const want = editor ? 0 : this.time.want(dt);
+    let days = 0;
+    if (want > 0) {
       const t0 = performance.now();
-      for (let i = 0; i < days; i++) {
-        stepDay(w);
-        this.afterDay(w);
+      const budget = 22; // ms / frame
+      while (days < want && (days === 0 || performance.now() - t0 < budget)) {
+        stepDay(w); this.afterDay(w); days++;
+        if (this.time.paused) break;
       }
+      this.time.consume(days);
       const el = performance.now() - t0;
       this.perf.dayMs = this.perf.dayMs * 0.9 + (el / days) * 0.1; this.perf.days += days;
       this.mapVersion++;
@@ -191,8 +200,8 @@ export class GameController {
     const fresh = w.mode === 'ruler' ? w.offers.filter(o => o.to === w.player && !(o as any).seen) : [];
     if (fresh.length) {
       for (const o of fresh) (o as any).seen = true;
-      if (fresh.some(o => o.kind === 'peace' || o.kind === 'ultimatum' || o.kind === 'vassal' || o.kind === 'alliance')) this.time.setSpeed(0);
-      pushToast(`${w.countries[fresh[0].from].shortName}의 외교 제안이 도착했습니다`, 'diplomacy');
+      // 평화·최후통첩·종속 요구만 일시정지 + 즉시 표시, 나머지는 우편함 배지
+      if (fresh.some(o => o.kind === 'peace' || o.kind === 'ultimatum' || o.kind === 'vassal')) this.time.setSpeed(0);
     }
     // 자동 저장
     const m = this.settings.autosaveMonths;

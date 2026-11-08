@@ -6,6 +6,7 @@ import { countryLabelInfo, provinceOutline } from './ProvinceRenderer';
 import { cityTier } from '../data/defs';
 import { atWar } from '../simulation/WorldHelpers';
 import type { MapCamera } from './MapCamera';
+import { UnitSprites, FIGURE_ZOOM } from './UnitSprites';
 
 const FONT = 'system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
 
@@ -29,12 +30,13 @@ export class MapLayers {
   private unitTexts: Text[] = [];
   private battleTexts: Text[] = [];
   stacks: UnitStack[] = [];
+  sprites = new UnitSprites();
 
   constructor() {
     this.cities.addChild(this.cityG);
     this.units.addChild(this.unitG);
     this.battles.addChild(this.battleG);
-    this.root.addChild(this.select, this.labels, this.cities, this.arrows, this.units, this.battles, this.brush);
+    this.root.addChild(this.select, this.labels, this.sprites.people, this.cities, this.arrows, this.sprites.g, this.sprites.fx, this.units, this.battles, this.brush);
   }
 
   updateLabels(w: WorldState, show: boolean) {
@@ -62,7 +64,7 @@ export class MapLayers {
     const g = this.cityG; g.clear();
     const z = cam.zoom; const inv = 1 / z;
     let ti = 0;
-    const capitals = new Set(w.countries.filter(c => c.alive).map(c => c.capital));
+    const capitals = new Set(w.countries.filter(c => c.alive && (z > 1.3 || c.provinceCount >= 3 || w.countries.length < 60)).map(c => c.capital));
     for (const p of w.provinces) {
       if (!p.active) continue;
       const tier = cityTier(p.pop).tier;
@@ -133,8 +135,10 @@ export class MapLayers {
     }
     let ti = 0;
     const compact = z < 0.85;
+    const figures = z >= FIGURE_ZOOM;
     const showText = !compact;
     for (const s of stacks) {
+      if (z < 0.55 && s.owner !== w.player && !s.battle && !(selDivs && s.divs.some(id => selDivs.has(id)))) continue;
       if (compact) {
         // 축소 시: 작은 표식만
         const c = w.countries[s.owner];
@@ -144,6 +148,20 @@ export class MapLayers {
         continue;
       }
       if (s.x * z + cam.x < -40 || s.y * z + cam.y < -40 || s.x * z + cam.x > cam.viewW + 40 || s.y * z + cam.y > cam.viewH + 40) continue;
+      if (figures) {
+        // 확대 시: 병사 그림 위에 작은 병력 표시만
+        if (s.battle) continue;
+        const c2 = w.countries[s.owner];
+        let t2 = this.unitTexts[ti];
+        if (!t2) { t2 = new Text({ text: '', style: new TextStyle({ fontFamily: FONT, fontSize: 10, fontWeight: '700', fill: 0xffffff }) }); t2.resolution = 2; t2.anchor.set(0, 0.5); this.units.addChild(t2); this.unitTexts.push(t2); }
+        const lb = `${Math.round(s.strength / 1000)}k`;
+        if (t2.text !== lb) t2.text = lb;
+        const yy = s.y - 6 * inv - 4;
+        g.roundRect(s.x - 9 * inv, yy - 5 * inv, 18 * inv, 10 * inv, 2 * inv).fill({ color: 0x141a22, alpha: 0.75 });
+        g.rect(s.x - 9 * inv, yy - 5 * inv, 3 * inv, 10 * inv).fill({ color: c2.color });
+        t2.position.set(s.x - 5 * inv, yy); t2.scale.set(inv * 0.85); t2.visible = true; ti++;
+        continue;
+      }
       const c = w.countries[s.owner];
       const selected = !!selDivs && s.divs.some(id => selDivs.has(id));
       const hostile = w.player >= 0 && atWar(w, w.player, s.owner);

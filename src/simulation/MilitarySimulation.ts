@@ -16,7 +16,7 @@ export function clearSupplyCache() { supplyCache.clear(); }
 
 export function computeSupply(w: WorldState, cid: number): Float32Array {
   const cached = supplyCache.get(cid);
-  if (cached && cached.v.length === w.provinces.length && w.day - cached.day < 15 && (cached.ver === getControlVersion() || w.day - cached.day < 2)) return cached.v;
+  if (cached && cached.v.length === w.provinces.length && w.day - cached.day < 20 && (cached.ver === getControlVersion() || w.day - cached.day < (enemiesOf(w, cid).length ? 3 : 20))) return cached.v;
   const c = w.countries[cid];
   const n = w.provinces.length;
   const cost = new Float64Array(n).fill(Infinity);

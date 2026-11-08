@@ -23,9 +23,29 @@ export function setRel(w: WorldState, a: number, b: number, v: number) {
 }
 export const addRel = (w: WorldState, a: number, b: number, d: number) => setRel(w, a, b, getRel(w, a, b) + d);
 
+/** 조약 색인 (배열 참조·길이가 바뀌면 재구성) */
+let idxRef: unknown = null, idxLen = -1;
+let idxSet = new Set<number>();
+const TT: Record<string, number> = { alliance: 1, nap: 2, trade: 3, access: 4, guarantee: 5, truce: 6, sanction: 7, support: 8, econ: 9 };
+const tkey = (t: string, a: number, b: number) => TT[t] * 1e8 + a * 1e4 + b;
+let idxAllies = new Map<number, number[]>();
+let idxGuar = new Map<number, number[]>();
+function treatyIndex(w: WorldState) {
+  if (idxRef === w.treaties && idxLen === w.treaties.length) return;
+  idxRef = w.treaties; idxLen = w.treaties.length;
+  idxSet = new Set(); idxAllies = new Map(); idxGuar = new Map();
+  for (const t of w.treaties) {
+    idxSet.add(tkey(t.type, t.a, t.b));
+    if (t.type === 'guarantee') { let g = idxGuar.get(t.b); if (!g) idxGuar.set(t.b, g = []); g.push(t.a); }
+    if (t.type === 'alliance') {
+      let x = idxAllies.get(t.a); if (!x) idxAllies.set(t.a, x = []); x.push(t.b);
+      let y = idxAllies.get(t.b); if (!y) idxAllies.set(t.b, y = []); y.push(t.a);
+    }
+  }
+}
 export function hasTreaty(w: WorldState, type: TreatyType, a: number, b: number, directed = false) {
-  for (const t of w.treaties) if (t.type === type && ((t.a === a && t.b === b) || (!directed && t.a === b && t.b === a))) return true;
-  return false;
+  treatyIndex(w);
+  return idxSet.has(tkey(type, a, b)) || (!directed && idxSet.has(tkey(type, b, a)));
 }
 export function addTreaty(w: WorldState, type: TreatyType, a: number, b: number, until = -1) {
   if (hasTreaty(w, type, a, b, type === 'guarantee' || type === 'sanction' || type === 'support')) return;
@@ -35,10 +55,15 @@ export function removeTreaty(w: WorldState, type: TreatyType, a: number, b: numb
   w.treaties = w.treaties.filter(t => !(t.type === type && ((t.a === a && t.b === b) || (t.a === b && t.b === a))));
 }
 export function treatiesOf(w: WorldState, c: number) { return w.treaties.filter(t => t.a === c || t.b === c); }
+let vassalDay = -1; let vassalMap = new Map<number, number[]>(); let vassalCount = -1;
 export function alliesOf(w: WorldState, c: number): number[] {
-  const s = new Set<number>();
-  for (const t of w.treaties) if (t.type === 'alliance') { if (t.a === c) s.add(t.b); else if (t.b === c) s.add(t.a); }
-  for (const o of w.countries) if (o.alive && o.overlord === c) s.add(o.id);
+  treatyIndex(w);
+  const s = new Set<number>(idxAllies.get(c) || []);
+  if (vassalDay !== w.day || vassalCount !== w.countries.length) {
+    vassalDay = w.day; vassalCount = w.countries.length; vassalMap = new Map();
+    for (const o of w.countries) if (o.alive && o.overlord >= 0) { let a = vassalMap.get(o.overlord); if (!a) vassalMap.set(o.overlord, a = []); a.push(o.id); }
+  }
+  for (const v of vassalMap.get(c) || []) if (w.countries[v].overlord === c) s.add(v);
   const me = w.countries[c]; if (me && me.overlord >= 0) s.add(me.overlord);
   s.delete(c);
   return [...s].filter(i => w.countries[i]?.alive);
@@ -100,12 +125,31 @@ export function livingCountries(w: WorldState): Country[] { return w.countries.f
 
 export function ownedProvinces(w: WorldState, c: number) { return w.provinces.filter(p => p.active && p.owner === c); }
 
+/** c 의 독립을 보장한 국가들 */
+export function guarantorsOf(w: WorldState, c: number): number[] { treatyIndex(w); return idxGuar.get(c) || []; }
+
+/** 국가별 배치 병력 합계 */
+export function deployedBy(w: WorldState): Float64Array {
+  const a = new Float64Array(w.countries.length);
+  for (const d of w.divisions) if (d.owner < a.length) a[d.owner] += d.strength;
+  return a;
+}
+
+let nbDay = -1, nbVer = -1, nbN = -1;
+let nbLand = new Map<number, Set<number>>(), nbSea = new Map<number, Set<number>>();
+const EMPTY = new Set<number>();
+/** 국가 인접국 (하루 단위로 전체 국가를 한 번에 계산·캐시) */
 export function countryNeighbors(w: WorldState, c: number, includeSea = true): Set<number> {
-  const s = new Set<number>();
-  for (const p of w.provinces) {
-    if (!p.active || p.owner !== c) continue;
-    for (const n of p.neighbors) { const o = w.provinces[n].owner; if (o >= 0 && o !== c) s.add(o); }
-    if (includeSea) for (const n of p.seaNeighbors) { const o = w.provinces[n].owner; if (o >= 0 && o !== c) s.add(o); }
+  if (nbDay !== w.day || nbVer !== controlVersion || nbN !== w.provinces.length) {
+    nbDay = w.day; nbVer = controlVersion; nbN = w.provinces.length;
+    nbLand = new Map(); nbSea = new Map();
+    const add = (m: Map<number, Set<number>>, a: number, b: number) => { let x = m.get(a); if (!x) m.set(a, x = new Set()); x.add(b); };
+    for (const p of w.provinces) {
+      if (!p.active || p.owner < 0) continue;
+      const c0 = p.owner;
+      for (const n of p.neighbors) { const o = w.provinces[n].owner; if (o >= 0 && o !== c0) { add(nbLand, c0, o); add(nbSea, c0, o); } }
+      for (const n of p.seaNeighbors) { const o = w.provinces[n].owner; if (o >= 0 && o !== c0) add(nbSea, c0, o); }
+    }
   }
-  return s;
+  return (includeSea ? nbSea : nbLand).get(c) || EMPTY;
 }

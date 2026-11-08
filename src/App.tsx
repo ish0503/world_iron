@@ -9,6 +9,7 @@ import { RightPanel } from './components/RightPanel';
 import { BottomBar } from './components/BottomBar';
 import { MapView } from './components/MapView';
 import { Modals } from './components/Modals';
+import { DecisionCard } from './components/DecisionCard';
 import { Toasts, BusyOverlay } from './components/Toasts';
 import './styles/global.css';
 import './styles/game.css';
@@ -26,7 +27,7 @@ export default function App() {
     const key = (e: KeyboardEvent) => {
       if (!game.world || (e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'SELECT') return;
       if (e.code === 'Space') { e.preventDefault(); if (game.world.mode !== 'editor') game.time.togglePause(); game.emit(); }
-      else if (/^Digit[1-5]$/.test(e.code) && game.world.mode !== 'editor') { game.time.setSpeed(+e.code.slice(5)); game.emit(); }
+      else if (/^Digit[1-7]$/.test(e.code) && game.world.mode !== 'editor') { game.time.setSpeed(+e.code.slice(5)); game.emit(); }
       else if (e.code === 'Escape') { game.setTool({ kind: 'select' }); game.select({ kind: 'none' }); ui.set({ modal: null }); }
     };
     window.addEventListener('keydown', key);
@@ -44,6 +45,7 @@ export default function App() {
             <LeftPanel />
             <MapView />
             <RightPanel />
+            <DecisionCard />
             <button className="mobile-menu" onClick={() => ui.set({ mobileLeft: !s.mobileLeft })} aria-label="메뉴">☰</button>
           </div>
           <BottomBar />

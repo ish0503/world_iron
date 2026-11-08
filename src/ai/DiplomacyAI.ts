@@ -7,6 +7,7 @@ import {
 } from '../simulation/WorldHelpers';
 import { diplomacy, blocPower, powerOf } from '../simulation/DiplomacySimulation';
 import { warScore, aiPeaceTerms, applyPeace, sideOf, peaceCost } from '../simulation/WarSimulation';
+import { nuclearBloc } from '../simulation/Extras';
 
 /** 외교 AI: 동맹 추진, 관계 관리, 조약, 개전 판단 */
 export function diplomacyAI(w: WorldState, c: Country) {
@@ -86,7 +87,8 @@ function considerWar(w: WorldState, c: Country, nbs: number[]) {
     const rel = getRel(w, c.id, n);
     const claims = w.provinces.filter(p => p.active && p.owner === n && p.cores.includes(c.id)).length;
     const hawk = c.personality === 'expansionist' || c.personality === 'revolutionary' || c.personality === 'militarist';
-    if (rel > (hawk ? 25 : 5) && !claims) continue;
+    const real = w.scenario === 'real';
+    if (rel > (real ? (hawk ? -5 : -25) : (hawk ? 25 : 5)) && !claims) continue;
     const myP = blocPower(w, c.id, 0.4);
     const theirP = blocPower(w, n, 0.75);
     const ratio = myP / Math.max(1, theirP);
@@ -96,10 +98,12 @@ function considerWar(w: WorldState, c: Country, nbs: number[]) {
     if (c.treasury < 1 && c.debt > c.gdp * 0.6) desire *= 0.3;
     if (c.goals.some(g => g.type === 'territory' && g.target === n)) desire *= 1.6;
     if (nap) desire *= 0.4;
+    // 핵 억제
+    if (nuclearBloc(w, n) > 0) desire *= (c.nukes ? 0.3 : 0.12);
     if (desire > bd) { bd = desire; best = n; }
   }
   if (best < 0) return;
-  if (!chance(clamp(bd, 0, 1.5) * 0.025)) return;
+  if (!chance(clamp(bd, 0, 1.5) * (w.scenario === 'real' ? 0.012 : 0.025))) return;
   const ratio = blocPower(w, c.id, 0.4) / Math.max(1, blocPower(w, best, 0.75));
   const claims = w.provinces.some(p => p.active && p.owner === best && p.cores.includes(c.id));
   if (ratio > 2.5 && chance(0.6)) diplomacy(w, c.id, best, claims ? 'demandTerritory' : 'ultimatum');

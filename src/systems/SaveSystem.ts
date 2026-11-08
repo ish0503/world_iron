@@ -32,6 +32,7 @@ export function serializeWorld(w: WorldState): string {
   const { terrain, height_, river, cellProv, ...rest } = w;
   return JSON.stringify({
     ...rest,
+    relations: rest.relations.map(v => Math.round(v * 10) / 10),
     version: SAVE_VERSION,
     __bin: {
       terrain: b64(terrain), height_: b64(height_), river: b64(river),

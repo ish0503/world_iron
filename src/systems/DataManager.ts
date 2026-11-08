@@ -5,9 +5,11 @@ export interface Settings {
   showLabels: boolean;
   showUnits: boolean;
   notifyMajorOnly: boolean;
+  /** 알림 수준: all 전체 · major 주요 · mine 내 국가+세계대전 · off 끔 */
+  notify: 'all' | 'major' | 'mine' | 'off';
   uiScale: number;
 }
-const DEFAULTS: Settings = { autosaveMonths: 6, showProvinceBorders: true, showLabels: true, showUnits: true, notifyMajorOnly: false, uiScale: 1 };
+const DEFAULTS: Settings = { autosaveMonths: 6, showProvinceBorders: true, showLabels: true, showUnits: true, notifyMajorOnly: false, uiScale: 1, notify: (typeof window !== 'undefined' && window.innerWidth < 760) ? 'mine' : 'major' };
 const KEY = 'world-dominion-settings';
 
 export function loadSettings(): Settings {

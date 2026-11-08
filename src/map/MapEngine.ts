@@ -152,6 +152,7 @@ export class MapEngine {
       this.layers.updateSelection(w, game.selection, this.cam);
     }
     this.layers.updateBattles(w, this.cam, now / 1000);
+    this.layers.sprites.update(w, this.cam, now / 1000, game.selection, game.settings.showUnits);
     const t = game.tool;
     this.layers.drawBrush((this.hoverCell.x + 0.5) * CELL, (this.hoverCell.y + 0.5) * CELL, t.kind === 'terrain' ? t.radius : 0, this.cam, t.kind === 'terrain' && this.hoverCell.x >= 0);
   }
@@ -176,11 +177,11 @@ export class MapEngine {
     if (!game.settings.showUnits) return null;
     const z = this.cam.zoom;
     let best: UnitStack | null = null, bd = 18;
-    const compact = z < 0.85;
+    const compact = z < 0.85; const fig = z >= 1.6;
     for (const s of this.layers.stacks) {
       const p = this.cam.toScreen(s.x, s.y);
       const dx = Math.abs(p.x - sx), dy = Math.abs(p.y - sy);
-      if (compact ? (dx < 7 && dy < 7) : (dx < 17 && dy < 10)) { const d = dx + dy; if (d < bd) { bd = d; best = s; } }
+      if (fig ? (dx < 24 && Math.abs(p.y + 10 - sy) < 22) : compact ? (dx < 7 && dy < 7) : (dx < 17 && dy < 10)) { const d = dx + dy; if (d < bd) { bd = d; best = s; } }
     }
     void z;
     return best;

@@ -5,6 +5,8 @@ import { monthlyEconomy, dailyBudget, yearlyEconomy } from './EconomySimulation'
 import { monthlyPopulation, monthlyManpower } from './PopulationSimulation';
 import { monthlyPolitics, dailyResearch, dailyConstruction } from './CountrySimulation';
 import { monthlyPoliticalEvents } from './EventSimulation';
+import { monthlyDecisions } from './DecisionEvents';
+import { monthlyNuclearAI, monthlyAchievements } from './Extras';
 import { monthlyEnvironment } from './EnvironmentSimulation';
 import { monthlyDiplomacy } from './DiplomacySimulation';
 import { dailyMilitary, setCaptureHook, clearSupplyCache } from './MilitarySimulation';
@@ -14,8 +16,11 @@ import { runCountryAI } from '../ai/CountryAI';
 import { setRel, getRel, addTreaty, countryNeighbors, chronicle, ensureRelSize } from './WorldHelpers';
 import { UNITS } from '../data/defs';
 import { techBaseForYear } from './WorldGen';
+import { applyRealDiplomacy } from './RealWorld';
 
 setCaptureHook(onCaptured);
+let achievementHook: (id: string) => void = () => {};
+export function onAchievement(f: (id: string) => void) { achievementHook = f; }
 
 /** RNG 상태를 월드와 동기화 */
 export function bindRng(w: WorldState) { rng.setState(w.rng); }
@@ -72,6 +77,7 @@ export function setupWorld(w: WorldState) {
     if (c.tech.military >= 2) { c.planes.fighter = Math.round(20 + rand() * 60); c.planes.bomber = Math.round(rand() * 30); }
     c.history.push({ d: 0, gdp: c.gdp, pop: c.population, mil: 0, prov: own.length });
   }
+  if (w.scenario === 'real') { applyRealDiplomacy(w, (o, t, p) => { spawnDivision(w, o, t as keyof typeof UNITS, p, 0.95); }); for (const c of live) { c.history = [{ d: 0, gdp: c.gdp, pop: c.population, mil: 0, prov: c.provinceCount }]; } }
   countryStats(w);
   // 시작 시점에 이미 도달한 기술은 '세계 최초' 기록에서 제외
   for (const c of live) for (const [f, lv] of Object.entries(c.tech)) for (let l = 0; l <= lv; l++) w.firsts[`${f}-${l}`] = true;
@@ -108,6 +114,9 @@ export function stepDay(w: WorldState) {
     monthlyDiplomacy(w);
     monthlyEnvironment(w);
     monthlyPoliticalEvents(w);
+    monthlyNuclearAI(w);
+    monthlyDecisions(w);
+    monthlyAchievements(w, id => achievementHook(id));
     clearSupplyCache();
     if (d.month === 1) yearlyEconomy(w);
   }

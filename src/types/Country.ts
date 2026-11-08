@@ -89,6 +89,12 @@ export interface Country {
   militaryPower: number;
   totalIC: number;
   isRebel?: boolean;
+  /** 핵탄두 보유 수 */
+  nukes?: number;
+  /** 실제 국가 영문명 (실제 세계 시나리오) */
+  realName?: string;
+  /** 1인당 생산성 배율 (실제 세계) */
+  productivity?: number;
   autoResearch?: boolean;
   avgUnrest?: number;
   lastCrisis?: number;

@@ -6,7 +6,8 @@ import { orderMove } from '../simulation/MilitarySimulation';
 import { paintTerrain, afterGeometryChange, assignProvince, createCountryAt, deleteCountry, setCapital, buildCity, buildPort, setResource, changeProvincePop, forceIndependence, god } from '../editor/WorldEditor';
 import type { DisasterType } from '../simulation/EnvironmentSimulation';
 import type { ResourceId } from '../types/Province';
-import { cname } from '../simulation/WorldHelpers';
+import { cname, chronicle } from '../simulation/WorldHelpers';
+import { launchNuke, nukeEffect } from '../simulation/Extras';
 
 let geoTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -77,6 +78,12 @@ function applyGodTool(action: string, arg: any, pid: number) {
   const w = game.world!; const p = w.provinces[pid];
   const owner = p.owner;
   const done = (msg: string) => { pushToast(msg, 'god'); game.mapVersion++; game.emit(); };
+  if (action === 'nuke') {
+    const w2 = game.world!;
+    if (w2.mode === 'ruler') { const r = launchNuke(w2, w2.player, pid); game.setTool({ kind: 'select' }); return done(r.msg); }
+    const dead = nukeEffect(w2, pid); chronicle(w2, 'war', `☢ ${p.name} 핵폭발`, `신의 개입으로 ${p.name}에서 핵폭발이 일어나 약 ${Math.round(dead / 1000)}천 명이 희생되었다.`, owner >= 0 ? [owner] : [], true, pid);
+    return done(`${p.name} 핵폭발`);
+  }
   if (action.startsWith('disaster:')) { god.disaster(w, action.split(':')[1] as DisasterType, pid); game.terrainVersion++; return done(`${p.name}에 ${action.split(':')[1]} 발생`); }
   switch (action) {
     case 'createCountry': { const id = createCountryAt(w, pid, { size: arg ?? 3 }); return done(id >= 0 ? `${w.countries[id].name} 건국` : '건국 실패'); }

@@ -22,7 +22,7 @@ export function GodPanel() {
     <div>
       <Section title="지도 개입 (클릭 도구)">
         <div className="grid2">
-          {[['war', '⚔ 전쟁 강제'], ['merge', '🔗 국가 통합'], ['createCountry', '🏳 국가 건국'], ['independence', '🗽 지역 독립'], ['deleteCountry', '✖ 국가 삭제'], ['unclaim', '◻ 영토 해방'], ['capital', '★ 수도 지정'], ['city', '🏙 도시 건설'], ['pop+', '👥 인구 증가'], ['pop-', '💀 인구 감소']].map(([a, n]) =>
+          {[['war', '⚔ 전쟁 강제'], ['merge', '🔗 국가 통합'], ['createCountry', '🏳 국가 건국'], ['independence', '🗽 지역 독립'], ['deleteCountry', '✖ 국가 삭제'], ['unclaim', '◻ 영토 해방'], ['capital', '★ 수도 지정'], ['city', '🏙 도시 건설'], ['pop+', '👥 인구 증가'], ['pop-', '💀 인구 감소'], ['nuke', '☢ 핵폭발']].map(([a, n]) =>
             <button key={a} className={`btn sm ${t === a ? 'primary' : ''}`} onClick={() => tool(a)}>{n}</button>)}
         </div>
         <div className="small muted">자원 생성</div>

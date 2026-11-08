@@ -6,6 +6,7 @@ import { RESOURCES, RES_IDS } from '../data/defs';
 import { CountryLink, Section, Stat } from './panelkit';
 import { warScore } from '../simulation/WarSimulation';
 import { fmtDate } from '../simulation/Calendar';
+import { ACHIEVEMENTS } from '../simulation/Extras';
 
 type Key = 'gdp' | 'population' | 'militaryPower' | 'provinceCount' | 'tech' | 'stability';
 
@@ -28,6 +29,11 @@ export function InfoPanel() {
         <Stat k="종교 / 문화" v={`${w.religions.length} / ${w.cultures.length}`} />
         <Stat k="지구 기온 편차" v={`${w.globalTemp >= 0 ? '+' : ''}${(w.globalTemp * 3).toFixed(2)}℃`} />
       </Section>
+      {w.player >= 0 && (
+        <Section title={`업적 (${w.achievements?.length ?? 0}/${Object.keys(ACHIEVEMENTS).length})`}>
+          <div className="achv">{Object.entries(ACHIEVEMENTS).map(([id, a]) => <span key={id} className={`pill ${w.achievements?.includes(id) ? 'got' : ''}`} title={a.desc}>{a.icon} {a.name}</span>)}</div>
+        </Section>
+      )}
       <Section title="국제 자원 시세 (단위당)">
         <div className="tags">{RES_IDS.map(r => <span key={r} className="pill">{RESOURCES[r].icon} {RESOURCES[r].name} {(w.prices[r] * 1000).toFixed(1)}M</span>)}</div>
       </Section>

@@ -52,6 +52,7 @@ export function checkDeath(w: WorldState, cid: number, killer = -1) {
   const has = w.provinces.some(p => p.active && p.owner === cid);
   if (has) return;
   c.alive = false; c.provinceCount = 0;
+  if (killer >= 0 && killer === w.player && w.stats) (w.stats as any).kills = ((w.stats as any).kills || 0) + 1;
   w.divisions = w.divisions.filter(d => d.owner !== cid);
   w.treaties = w.treaties.filter(t => t.a !== cid && t.b !== cid);
   for (const o of w.countries) if (o.overlord === cid) o.overlord = -1;

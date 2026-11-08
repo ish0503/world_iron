@@ -97,4 +97,11 @@ export interface WorldState {
   offers: DiplomaticOffer[];
   firsts: Record<string, boolean>;
   worldWarCount: number;
+  /** 'random' | 'real' */
+  scenario?: string;
+  achievements?: string[];
+  /** 플레이어 결정 이벤트 */
+  decision?: { id: string; title: string; text: string; options: { label: string; desc: string }[]; expires: number; data?: any } | null;
+  stats?: { startProv: number; lastWarDay: number; capLostSurvived?: boolean };
+  victory?: boolean;
 }

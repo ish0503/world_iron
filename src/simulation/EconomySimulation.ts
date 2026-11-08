@@ -5,7 +5,7 @@ import { TERRAINS } from '../data/terrain';
 import { RES_IDS, RESOURCES, UNITS } from '../data/defs';
 import { dateOf, season } from './Calendar';
 import { clamp } from './rng';
-import { hasTreaty, isAtWar, enemiesOf, chronicle } from './WorldHelpers';
+import { hasTreaty, isAtWar, enemiesOf, chronicle, deployedBy } from './WorldHelpers';
 
 /** 월간 경제 계산: 프로빈스 생산 → 국가 집계 → 자원 시장 → GDP/실업/물가 */
 export function monthlyEconomy(w: WorldState) {
@@ -38,7 +38,7 @@ export function monthlyEconomy(w: WorldState) {
     if (p.resource === 'food') f *= 1 + 0.2 * p.resourceAmount;
     let pic = (b.factory || 0) * labor[o] * (1 + 0.1 * c.tech.industry) * (1 + 0.05 * c.tech.energy) * (1 + 0.15 * (b.power || 0)) * (1 - p.devastation);
     const urban = Math.min(3, 0.4 + p.pop / 1_500_000);
-    const sv = p.pop * 0.00000022 * urban * (1 + 0.15 * (b.market || 0)) * (1 + 0.05 * c.tech.communication) * (1 - p.devastation * 0.5);
+    const sv = p.pop * 0.00000022 * (c.productivity ?? 1) * urban * (1 + 0.15 * (b.market || 0)) * (1 + 0.05 * c.tech.communication) * (1 - p.devastation * 0.5);
     p.food = f; p.ic = pic;
     p.gdp = (f * w.prices.food + pic * 0.15 + sv) * 12;
     pop[o] += p.pop;
@@ -59,6 +59,7 @@ export function monthlyEconomy(w: WorldState) {
   const worldProd: Record<ResourceId, number> = { food: 0, steel: 0, coal: 0, oil: 0, rare: 0 };
   const worldCons: Record<ResourceId, number> = { food: 0, steel: 0, coal: 0, oil: 0, rare: 0 };
 
+  const deployedAll = deployedBy(w);
   for (const c of w.countries) {
     if (!c.alive) continue;
     const i = c.id;
@@ -115,7 +116,7 @@ export function monthlyEconomy(w: WorldState) {
     satisfaction = clamp(satisfaction, 0.2, 1);
     // 노동 → 실업
     const workforce = pop[i] * 0.45;
-    const deployed = w.divisions.reduce((a, d) => a + (d.owner === i ? d.strength : 0), 0);
+    const deployed = deployedAll[i];
     c.unemployment = clamp(1 - (jobs[i] + deployed) / Math.max(1, workforce), 0.01, 0.5);
     // GDP
     const monthlyGdp = food[i] * w.prices.food + ic[i] * icValue * satisfaction + serv[i]
@@ -161,11 +162,18 @@ export function monthlyEconomy(w: WorldState) {
 }
 
 /** 일일 국고 계산 */
+let upkeepCache: Float64Array = new Float64Array(0); let upkeepDay = -1;
+function upkeepOf(w: WorldState, cid: number) {
+  if (upkeepDay !== w.day || upkeepCache.length < w.countries.length) {
+    upkeepDay = w.day; upkeepCache = new Float64Array(w.countries.length);
+    for (const d of w.divisions) if (d.owner < upkeepCache.length) upkeepCache[d.owner] += UNITS[d.type].upkeep * (0.4 + 0.6 * d.strength / d.maxStrength);
+  }
+  return upkeepCache[cid];
+}
 export function dailyBudget(w: WorldState, c: Country) {
   const eff = 0.55 + c.stability / 250 + c.tech.communication * 0.01;
   const income = (c.gdp / 365) * c.taxRate * eff;
-  let upkeep = 0;
-  for (const d of w.divisions) if (d.owner === c.id) upkeep += UNITS[d.type].upkeep * (0.4 + 0.6 * d.strength / d.maxStrength);
+  let upkeep = upkeepOf(w, c.id);
   upkeep *= 0.5 + c.budget.military;
   const ships = c.ships.destroyer * 0.4 + c.ships.cruiser + c.ships.battleship * 3 + c.ships.carrier * 4 + c.ships.submarine * 0.6 + c.ships.transport * 0.3;
   const planes = c.planes.fighter * 0.08 + c.planes.bomber * 0.15 + c.planes.attacker * 0.1 + c.planes.recon * 0.04 + c.planes.airlift * 0.08;

@@ -3,7 +3,7 @@ import { PERSONALITIES } from '../data/defs';
 import { rand, clamp } from './rng';
 import {
   getRel, setRel, addRel, hasTreaty, addTreaty, removeTreaty, atWar, alliesOf, countryNeighbors,
-  chronicle, cname, logEvent, isAtWar,
+  chronicle, cname, logEvent, isAtWar, guarantorsOf,
 } from './WorldHelpers';
 import { declareWar, warScore, applyPeace, sideOf, peaceCost, provinceValue } from './WarSimulation';
 import { transferProvince } from './CountryOps';
@@ -38,7 +38,7 @@ export function powerOf(w: WorldState, c: number) { return w.countries[c]?.milit
 export function blocPower(w: WorldState, c: number, factor = 0.6) {
   let p = powerOf(w, c);
   for (const a of alliesOf(w, c)) p += powerOf(w, a) * factor;
-  for (const t of w.treaties) if (t.type === 'guarantee' && t.b === c) p += powerOf(w, t.a) * factor * 0.7;
+  for (const g of guarantorsOf(w, c)) p += powerOf(w, g) * factor * 0.7;
   return p;
 }
 

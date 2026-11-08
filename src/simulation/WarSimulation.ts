@@ -374,6 +374,7 @@ export function applyPeace(w: WorldState, war: War, winnerSide: 'A' | 'D' | null
   const ll = winnerSide === 'A' ? war.leaderD : winnerSide === 'D' ? war.leaderA : -1;
   const lines: string[] = [];
   war.active = false; war.end = w.day;
+  (war as any).winner = wl;
   const all = [...war.attackers, ...war.defenders];
   if (terms && winnerSide) {
     if (terms.annex) {

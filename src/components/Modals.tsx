@@ -29,25 +29,29 @@ export function Modals() {
   const g = useGame();
   const w = g.world;
   const offers = w && w.mode === 'ruler' ? w.offers.filter(o => o.to === w.player) : [];
+  const critical = offers.some(o => o.kind === 'peace' || o.kind === 'ultimatum' || o.kind === 'vassal');
   return (
     <>
-      {offers.length > 0 && !s.modal && <OfferModal />}
+      {offers.length > 0 && !s.modal && (critical || s.inbox) && <OfferModal />}
       {s.modal === 'save' && <SaveModal />}
       {s.modal === 'settings' && <SettingsModal />}
       {s.modal === 'help' && <HelpModal />}
       {s.modal === 'peace' && <PeaceModal warId={s.peaceWar} />}
       {s.modal === 'modeSelect' && <ModeSelectModal />}
       {s.modal === 'menu' && <MenuModal />}
+      {w?.victory && !s.modal && <VictoryModal />}
     </>
   );
 }
 
 function OfferModal() {
   const g = useGame(); const w = g.world!;
-  const o = w.offers.find(x => x.to === w.player); if (!o) return null;
+  const mine = w.offers.filter(x => x.to === w.player);
+  const o = mine.find(x => x.kind === 'peace' || x.kind === 'ultimatum' || x.kind === 'vassal') ?? mine[0];
+  if (!o) { if (ui.state.inbox) setTimeout(() => ui.set({ inbox: false }), 0); return null; }
   const F = w.countries[o.from];
   return (
-    <Modal title={<><Flag color={F.color} /> {F.name}의 외교 문서</>}>
+    <Modal title={<><Flag color={F.color} /> {F.name}의 외교 문서 {mine.length > 1 && <span className="pill">{mine.length}건</span>}</>} onClose={() => ui.set({ inbox: false })}>
       <p className="letter">{o.text}</p>
       {o.terms && <div className="small muted">조건: 할양 {o.terms.takeProvinces.map(p => w.provinces[p].name).join(', ') || '없음'}{o.terms.reparations ? ` · 배상금 ${o.terms.reparations}B` : ''}</div>}
       {o.provinces && <div className="small muted">요구 지역: {o.provinces.map(p => w.provinces[p].name).join(', ')}</div>}
@@ -166,6 +170,10 @@ function SettingsModal() {
         <select value={s.autosaveMonths} onChange={e => g.updateSettings({ autosaveMonths: +e.target.value })}>
           <option value={0}>끄기</option><option value={1}>매월</option><option value={3}>3개월</option><option value={6}>6개월</option><option value={12}>매년</option>
         </select></label>
+      <label className="field">알림
+        <select value={s.notify} onChange={e => g.updateSettings({ notify: e.target.value as typeof s.notify })}>
+          <option value="all">전체 (전쟁 소식 포함)</option><option value="major">주요 사건</option><option value="mine">내 국가 + 세계적 사건만</option><option value="off">끄기</option>
+        </select></label>
       <label className="check"><input type="checkbox" checked={s.showProvinceBorders} onChange={e => g.updateSettings({ showProvinceBorders: e.target.checked })} /> 프로빈스 경계선 표시</label>
       <label className="check"><input type="checkbox" checked={s.showLabels} onChange={e => g.updateSettings({ showLabels: e.target.checked })} /> 국가 이름 표시</label>
       <label className="check"><input type="checkbox" checked={s.showUnits} onChange={e => g.updateSettings({ showUnits: e.target.checked })} /> 부대 표시</label>
@@ -183,7 +191,7 @@ function HelpModal() {
         <h4>모드</h4>
         <ul><li>👑 통치: 한 국가의 정치·경제·외교·군사를 직접 운영</li><li>👁 관찰: 개입 없이 AI 국가들의 역사를 지켜봄</li><li>⚡ 신: 전쟁 강제, 재해, 국가 통합·분열, 세계 규칙 변경</li><li>✏ 편집: 지형·영토·국가를 직접 설계 (시간 정지)</li></ul>
         <h4>단축키</h4>
-        <ul><li>Space: 일시정지/재개 · 1~5: 배속 · Esc: 선택 해제</li></ul>
+        <ul><li>Space: 일시정지/재개 · 1~7: 배속 · Esc: 선택 해제</li></ul>
         <h4>전쟁의 원리</h4>
         <p className="small">전투력 = 공격 × 사기·조직 × 보급 × 지형·기후, 방어력 = 방어 × 요새 × 지형 × 지휘. 보급은 수도·항구에서 철도와 지형을 따라 전달되며, 포위되면 사단이 괴멸합니다. 수도를 잃고 영토 대부분이 점령되면 항복합니다.</p>
       </div>
@@ -213,6 +221,19 @@ export function ModeSelectModal() {
         <div className="modecard"><h4>⚡ 신 모드</h4><p className="small muted">세계의 규칙을 바꾸고 국가와 자연에 직접 개입합니다.</p><Btn kind="primary" onClick={() => start(() => { g.setMode('god'); if (window.innerWidth > 760) ui.set({ panel: 'god' }); })}>신 모드 시작</Btn></div>
         <div className="modecard"><h4>✏ 시나리오 편집</h4><p className="small muted">지형, 국경, 국가, 자원, 시작 연도를 직접 설정합니다.</p><Btn onClick={() => { g.setMode('editor'); g.time.setSpeed(0); ui.set({ modal: null, panel: 'editor' }); }}>편집기 열기</Btn></div>
       </div>
+    </Modal>
+  );
+}
+
+function VictoryModal() {
+  const g = useGame(); const w = g.world!;
+  const c = w.countries[w.player];
+  const close2 = () => { w.victory = false; g.emit(); };
+  return (
+    <Modal title="🌐 세계 패권 달성!" onClose={close2}>
+      <p className="letter">{c?.name}이(가) 세계 인구의 40% 이상을 지배하는 패권국이 되었다. {w.startYear + Math.floor(w.day / 365)}년, 역사는 이 순간을 기록할 것이다.</p>
+      <div className="small muted">업적 {w.achievements?.length ?? 0}개 · 계속 플레이할 수 있습니다.</div>
+      <div className="row end"><Btn kind="primary" onClick={close2}>계속하기</Btn></div>
     </Modal>
   );
 }

@@ -11,10 +11,11 @@ export interface UIState {
   rightOpen: boolean;
   mobileLeft: boolean;
   eventLogOpen: boolean;
+  inbox: boolean;
 }
 
 class UIStore {
-  state: UIState = { panel: null, modal: null, peaceWar: -1, rightOpen: true, mobileLeft: false, eventLogOpen: false };
+  state: UIState = { panel: null, modal: null, peaceWar: -1, rightOpen: true, mobileLeft: false, eventLogOpen: false, inbox: false };
   map: MapEngine | null = null;
   private subs = new Set<() => void>();
   subscribe(f: () => void) { this.subs.add(f); return () => { this.subs.delete(f); }; }

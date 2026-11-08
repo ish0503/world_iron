@@ -2,7 +2,7 @@ import { useGame } from '../hooks/useGame';
 import { UNITS, UNIT_TYPES, SHIPS, PLANES } from '../data/defs';
 import { recruit, recruitCost, unitAvailable, buyShip, buyPlanes } from '../simulation/MilitarySimulation';
 import { navalPower, airPower } from '../simulation/EconomySimulation';
-import { warsOf } from '../simulation/WorldHelpers';
+import { warsOf, chronicle, addRel } from '../simulation/WorldHelpers';
 import { warScore, sideOf } from '../simulation/WarSimulation';
 import { fmtPop, fmtMoney } from '../simulation/format';
 import { pushToast } from '../systems/EventManager';
@@ -50,6 +50,9 @@ export function MilitaryPanel() {
         <Stat k="사단 수" v={`${divs.length}개 (${fmtPop(divs.reduce((a, d) => a + d.strength, 0))}명)`} />
         <Stat k="가용 인력" v={fmtPop(c.manpower)} />
         <Stat k="해군력 / 공군력" v={`${navalPower(c).toFixed(0)} / ${airPower(c).toFixed(0)}`} />
+        {(c.nukes || 0) > 0 && <Stat k="☢ 핵탄두" v={`${c.nukes}기`} tone="warn" />}
+        {canAct && (c.nukes || 0) > 0 && warsOf(w, cid).length > 0 && <Btn small kind="danger" onClick={() => { g.setTool({ kind: 'god', action: 'nuke' }); pushToast('핵 공격 목표(교전국 영토)를 지도에서 선택하세요', 'war'); }}>☢ 핵 공격 (국제적 비난, 보복 위험)</Btn>}
+        {canAct && (c.nukes || 0) === 0 && c.tech.energy >= 7 && c.tech.military >= 7 && <Btn small disabled={c.treasury < c.gdp * 0.05} onClick={() => { c.treasury -= c.gdp * 0.05; c.nukes = (c.nukes || 0) + 5; chronicle(w, 'war', `☢ ${c.shortName} 핵무장`, `${c.name}이(가) 핵무기 개발에 성공했다.`, [cid], true); for (const o of w.countries) if (o.alive && o.id !== cid) addRel(w, cid, o.id, -15); g.emit(); }}>☢ 핵무기 개발 (GDP 5%, 관계 악화)</Btn>}
         {canAct && <label className="check"><input type="checkbox" checked={aiAll} onChange={e => { for (const d of divs) d.aiControlled = e.target.checked; g.emit(); }} /> AI 전선 지휘 (모든 사단 자동 작전)</label>}
       </Section>
       <Section title="전쟁"><WarList cid={cid} canAct={canAct} /></Section>

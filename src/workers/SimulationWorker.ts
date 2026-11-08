@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { generateWorld, type GenOptions } from '../simulation/WorldGen';
-import { setupWorld, stepDay } from '../simulation/SimulationEngine';
+import { stepDay } from '../simulation/SimulationEngine';
+import { createWorld, type CreateOptions } from '../simulation/WorldFactory';
 import type { WorldState } from '../types/World';
 
 /**
@@ -8,15 +8,13 @@ import type { WorldState } from '../types/World';
  *  - generate: 지형·프로빈스·국가 생성
  *  - fastforward: 세계사 빨리 감기 (수십 년 단위)
  */
-type Msg = { type: 'generate'; opt: GenOptions } | { type: 'fastforward'; world: WorldState; days: number };
+type Msg = { type: 'generate'; opt: CreateOptions } | { type: 'fastforward'; world: WorldState; days: number };
 
 self.onmessage = (e: MessageEvent<Msg>) => {
   const m = e.data;
   try {
     if (m.type === 'generate') {
-      const w = generateWorld(m.opt, (p, msg) => self.postMessage({ type: 'progress', p, msg }));
-      self.postMessage({ type: 'progress', p: 0.95, msg: '국가 초기화 중...' });
-      setupWorld(w);
+      const w = createWorld(m.opt, (p, msg) => self.postMessage({ type: 'progress', p, msg }));
       self.postMessage({ type: 'done', world: w });
     } else if (m.type === 'fastforward') {
       const w = m.world;

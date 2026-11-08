@@ -9,7 +9,7 @@ import { fmtPop } from '../simulation/format';
 import { cityTier, RESOURCES } from '../data/defs';
 import { DISASTERS, type DisasterType } from '../simulation/EnvironmentSimulation';
 
-const GOD_LABEL: Record<string, string> = { war: '⚔ 전쟁 강제: 공격국 → 대상국 순서로 클릭', merge: '🔗 통합: 주체 국가 → 흡수될 국가 순서로 클릭', createCountry: '🏳 국가 건국', independence: '🗽 지역 독립', deleteCountry: '✖ 국가 삭제', unclaim: '◻ 영토 해방', capital: '★ 수도 지정', city: '🏙 도시 건설', port: '⚓ 항구 건설', 'pop+': '👥 인구 증가', 'pop-': '💀 인구 감소', resource: '⛏ 자원 설정', disaster: '🌋 자연재해' };
+const GOD_LABEL: Record<string, string> = { war: '⚔ 전쟁 강제: 공격국 → 대상국 순서로 클릭', merge: '🔗 통합: 주체 국가 → 흡수될 국가 순서로 클릭', createCountry: '🏳 국가 건국', independence: '🗽 지역 독립', deleteCountry: '✖ 국가 삭제', unclaim: '◻ 영토 해방', capital: '★ 수도 지정', city: '🏙 도시 건설', port: '⚓ 항구 건설', 'pop+': '👥 인구 증가', 'pop-': '💀 인구 감소', nuke: '☢ 핵 공격: 목표 지역 선택', resource: '⛏ 자원 설정', disaster: '🌋 자연재해' };
 
 export const MAP_MODES: { id: MapMode; name: string; icon: string }[] = [
   { id: 'political', name: '정치', icon: '🗺' },
@@ -65,6 +65,7 @@ export function MapView() {
           </button>
         ))}
       </div>
+      {w && w.mode === 'ruler' && w.offers.some(o => o.to === w.player) && <button className="inboxbtn" onClick={() => ui.set({ inbox: true })}>📨 {w.offers.filter(o => o.to === w.player).length}</button>}
       <div className="zoomctl">
         <button onClick={() => ui.map?.zoomBy(1.4)} title="확대">＋</button>
         <button onClick={() => ui.map?.zoomBy(1 / 1.4)} title="축소">－</button>

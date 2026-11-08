@@ -8,6 +8,7 @@ import { CountryLink, NoSubjectWrap, Section } from './panelkit';
 import { subject } from './CountryPanel';
 import { game } from '../systems/GameController';
 import { ui } from '../systems/UIStore';
+import { SPY_ACTIONS, spy, spyCost } from '../simulation/Extras';
 import type { TreatyType } from '../types/World';
 
 const TREATY_NAMES: Record<TreatyType, string> = { alliance: '동맹', nap: '불가침', trade: '무역', access: '통행권', guarantee: '보장', truce: '휴전', sanction: '제재', support: '지원', econ: '경제협력' };
@@ -31,6 +32,7 @@ export function DiplomacyActions({ from, to }: { from: number; to: number }) {
   return (
     <div className="dacts">
       {avail.map(a => <button key={a.id} className={`btn sm ${a.id === 'declareWar' || a.id === 'ultimatum' ? 'danger' : ''}`} title={a.desc} onClick={() => run(a.id)}>{a.name}</button>)}
+      {SPY_ACTIONS.map(s => <button key={s.id} className="btn sm" title={`${s.desc} (비용 ${spyCost(w, from).toFixed(1)}B)`} onClick={() => { const r = spy(w, from, to, s.id); pushToast(r.msg, r.ok ? 'diplomacy' : 'war'); game.emit(); }}>{s.name}</button>)}
       {war && <button className="btn sm primary" onClick={() => { const wr = w.wars.find(x => x.active && ((x.attackers.includes(from) && x.defenders.includes(to)) || (x.defenders.includes(from) && x.attackers.includes(to)))); if (wr) ui.set({ modal: 'peace', peaceWar: wr.id }); }}>평화 협상</button>}
     </div>
   );
