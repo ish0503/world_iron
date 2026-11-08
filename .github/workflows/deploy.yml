@@ -1,58 +1,37 @@
-name: Deploy World Dominion
+name: Build World Dominion
 
+# 빌드 결과(docs/ + 루트 index.html)를 main 브랜치에 커밋한다.
+# GitHub Pages 설정: Settings → Pages → Deploy from a branch → main / (root)
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: build-main
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
+      - run: npm ci
+      - run: npm run build
       - name: Simulation smoke test (20 years)
         run: npm run sim-test -- 20 small
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - name: Upload
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Commit build output if changed
+        run: |
+          git add -A docs index.html .nojekyll
+          if git diff --cached --quiet; then echo "build output up to date"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: rebuild site [skip ci]"
+          git push

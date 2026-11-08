@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/root-index.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "sim-test": "esbuild scripts/sim-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sim-test.mjs && node node_modules/.cache/sim-test.mjs"

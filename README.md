@@ -64,4 +64,6 @@ src/
 
 ## 배포
 
-`main` 브랜치에 push하면 GitHub Actions(`.github/workflows/deploy.yml`)가 빌드 후 GitHub Pages에 배포합니다. 저장소 **Settings → Pages → Build and deployment → Source** 가 **GitHub Actions** 로 설정되어 있어야 합니다. Vite `base`는 상대 경로(`./`)라 저장소 이름과 무관하게 동작합니다.
+`npm run build` 는 `docs/` 에 빌드 결과를 만들고, 저장소 루트의 `index.html` 도 빌드된 페이지로 갱신합니다. 이 결과물은 저장소에 커밋되므로 GitHub Pages 를 **Settings → Pages → Deploy from a branch → `main` / `(root)`** (또는 `/docs`) 로 설정하면 바로 동작합니다. `main` 에 push하면 GitHub Actions 가 빌드·시뮬레이션 테스트를 실행하고, 빌드 결과가 바뀌었으면 자동으로 커밋합니다.
+
+개발용 HTML 진입점은 `app/index.html` 입니다 (`npm run dev`).
