@@ -83,7 +83,8 @@ export function distinctColor(w: WorldState) {
 export interface CreateOpts { gov?: GovType; personality?: Personality; name?: string; from?: number; rebel?: boolean; }
 
 export function createCountry(w: WorldState, provs: number[], opts: CreateOpts = {}): number {
-  const valid = provs.filter(p => w.provinces[p]?.active);
+  // 다른 나라가 점령 중인 지역은 신생국에 넘기지 않음 (점령 상태 유지)
+  const valid = provs.filter(p => w.provinces[p]?.active && (opts.from === undefined || w.provinces[p].controller === w.provinces[p].owner || w.provinces[p].controller < 0));
   if (!valid.length) return -1;
   let cap = valid[0];
   for (const p of valid) if (w.provinces[p].pop > w.provinces[cap].pop) cap = p;

@@ -41,7 +41,8 @@ export function recruitAI(w: WorldState, c: Country) {
     const front = frontProvinces(w, c.id);
     if (front.length) pid = pick(front);
     recruit(w, c.id, best, pid);
-  } else if (mine.length > target * 1.6 && !isAtWar(w, c.id) || (upkeepDay > c.income * 1.1 && c.treasury < 1)) {
+  } else if (!isAtWar(w, c.id) && (mine.length > target * 1.6 || (upkeepDay > c.income * 1.1 && c.treasury < 1))) {
+    // 평시에만 감축 (전쟁 중 부대가 갑자기 사라지지 않도록)
     // 감축
     const weakest = mine.sort((a, b) => a.strength - b.strength)[0];
     if (weakest) { w.divisions = w.divisions.filter(d => d.id !== weakest.id); c.manpower += weakest.strength * 0.8; }

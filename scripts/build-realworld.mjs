@@ -29,21 +29,20 @@ for (const f of geo.features) {
   const id = idOf(name);
   if (id < 0) { console.warn('skip', name); continue; }
   const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
-  for (const poly of polys) {
+  for (const poly0 of polys) {
+    // 날짜변경선을 넘는 고리는 경도를 연속적으로 펼친다 (예: 179 → 181)
+    const poly = poly0.map(ring => { let off = 0; let prev = ring[0][0]; return ring.map(([x, y]) => { if (x - prev > 180) off -= 360; else if (prev - x > 180) off += 360; prev = x; return [x + off, y]; }); });
     for (let y = 0; y < H; y++) {
       const lat = LAT0 - (y + 0.5) * dLat;
       const xs = [];
       for (const ring of poly) for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
         const [x1, y1] = ring[i], [x2, y2] = ring[j];
-        if (Math.abs(x2 - x1) > 180) continue; // 날짜변경선 경계
         if ((y1 > lat) !== (y2 > lat)) xs.push(x1 + (lat - y1) / (y2 - y1) * (x2 - x1));
       }
       xs.sort((a, b) => a - b);
-      if (xs.length % 2) continue;
       for (let k = 0; k + 1 < xs.length; k += 2) {
-        if (xs[k + 1] - xs[k] > 200) continue;
         const a = Math.ceil((xs[k] - LON0) / dLon - 0.5), b = Math.floor((xs[k + 1] - LON0) / dLon - 0.5);
-        for (let x = Math.max(0, a); x <= Math.min(W - 1, b); x++) owner[y * W + x] = id;
+        for (let x = a; x <= b; x++) owner[y * W + (((x % W) + W) % W)] = id;
       }
     }
   }

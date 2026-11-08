@@ -4,7 +4,7 @@ import { TERRAINS } from '../data/terrain';
 import { UNITS } from '../data/defs';
 import { rand, clamp } from './rng';
 import {
-  atWar, alliesOf, warsOf, hasTreaty, bumpControl, countryNeighbors, addTreaty, removeTreaty, addRel, getRel, setRel, chronicle, cname, logEvent,
+  atWar, alliesOf, warsOf, hasTreaty, bumpControl, countryNeighbors, canEnter, addTreaty, removeTreaty, addRel, getRel, setRel, chronicle, cname, logEvent,
 } from './WorldHelpers';
 import { airPower } from './EconomySimulation';
 import { transferProvince, changeGovernment, createCountry, checkDeath, relocateCapital } from './CountryOps';
@@ -118,7 +118,11 @@ export function startOrJoinBattle(w: WorldState, d: Division, pid: number) {
   }
   if (!b.attackers.includes(d.id)) b.attackers.push(d.id);
   d.battle = b.id;
-  for (const o of defs) if (!b.defenders.includes(o.id)) { b.defenders.push(o.id); o.battle = b.id; o.path = []; o.progress = 0; }
+  for (const o of defs) if (!b.defenders.includes(o.id)) {
+    const prev = w.battles.find(x => x.id === o.battle && x.id !== b!.id);
+    if (prev) { prev.attackers = prev.attackers.filter(x => x !== o.id); }
+    b.defenders.push(o.id); o.battle = b.id; o.path = []; o.progress = 0;
+  }
 }
 
 function sidePower(w: WorldState, divs: Division[], attacking: boolean, pid: number, enemy: Division[]) {
@@ -154,7 +158,15 @@ export function dailyBattles(w: WorldState) {
       for (const d of A) { d.battle = -1; }
       continue;
     }
-    for (const d of D) { d.battle = b.id; if (!b.defenders.includes(d.id)) b.defenders.push(d.id); }
+    for (const d of D) {
+      if (d.battle !== b.id) {
+        // 공격 중이던 부대가 자기 지역을 방어하게 되면 이전 전투에서 정식으로 이탈
+        const prev = w.battles.find(x => x.id === d.battle);
+        if (prev) { prev.attackers = prev.attackers.filter(x => x !== d.id); prev.defenders = prev.defenders.filter(x => x !== d.id); }
+        d.battle = b.id; d.path = []; d.progress = 0;
+      }
+      if (!b.defenders.includes(d.id)) b.defenders.push(d.id);
+    }
     const ca = w.countries[A[0].owner], cd = w.countries[D[0].owner];
     const pa = sidePower(w, A, true, b.province, D), pd = sidePower(w, D, false, b.province, A);
     const td = TERRAINS[p.terrain];
@@ -181,8 +193,9 @@ export function dailyBattles(w: WorldState) {
     const brkRatio = clamp(pa.brk / Math.max(1, pd.raw), 0, 1.5);
     const lossD = Patk * 12 * (0.8 + rand() * 0.4);
     const lossA = Pdef * 12 * (0.8 + rand() * 0.4) * (1 - Math.min(0.5, brkRatio * 0.3));
-    const orgD = 0.022 * Patk / Math.max(1, Pdef) + 0.006;
-    const orgA = 0.022 * Pdef / Math.max(1, Patk) + 0.012;
+    // 하루 조직력 손실: 전투가 보통 1~4주 지속되도록
+    const orgD = Math.min(0.045, 0.011 * Patk / Math.max(1, Pdef) + 0.004);
+    const orgA = Math.min(0.045, 0.011 * Pdef / Math.max(1, Patk) + 0.008);
     applyLoss(D, lossD, orgD);
     applyLoss(A, lossA, orgA);
     b.attackerLoss += lossA; b.defenderLoss += lossD;
@@ -195,13 +208,14 @@ export function dailyBattles(w: WorldState) {
     const avgOrgA = avg(A.map(d => d.org)), avgOrgD = avg(D.map(d => d.org));
     b.lastResult = `공격 ${Patk.toFixed(0)} vs 방어 ${Pdef.toFixed(0)}`;
     const duration = w.day - b.start;
-    if (avgOrgD < 0.12 || pd.str < 500) {
+    const minDays = 6;
+    if ((avgOrgD < 0.12 && duration >= minDays) || pd.str < 500) { 
       // 방어 패배 → 퇴각
       finished.push(b.id);
       retreat(w, D, b.province);
       for (const d of A) d.battle = -1;
       endBattleRecord(w, b, true);
-    } else if (avgOrgA < 0.12 || pa.str < 500 || duration > 120) {
+    } else if ((avgOrgA < 0.1 && duration >= minDays) || pa.str < 500 || duration > 150) {
       finished.push(b.id);
       for (const d of A) { d.battle = -1; d.path = []; d.progress = 0; }
       for (const d of D) d.battle = -1;
@@ -325,7 +339,9 @@ export function checkCapitulation(w: WorldState, cid: number) {
       // 개별 항복: 점령지 할양 후 이탈
       const winners = side === 'A' ? war.defenders : war.attackers;
       for (const p of w.provinces) if (p.active && p.owner === cid && winners.includes(p.controller)) transferProvince(w, p.id, p.controller);
-      for (const p of w.provinces) if (p.active && p.owner === cid) p.controller = cid;
+      if (side === 'A') war.attackers = war.attackers.filter(x => x !== cid); else war.defenders = war.defenders.filter(x => x !== cid);
+      for (const p of w.provinces) if (p.active && p.owner === cid && p.controller !== cid && p.controller >= 0 && !atWar(w, cid, p.controller)) p.controller = cid;
+      rehomeDivisions(w, [cid, ...winners]);
       if (side === 'A') war.attackers = war.attackers.filter(x => x !== cid); else war.defenders = war.defenders.filter(x => x !== cid);
       if (leader === cid) {
         const nl = [...mates].sort((a, b) => w.countries[b].militaryPower - w.countries[a].militaryPower)[0];
@@ -429,7 +445,12 @@ export function applyPeace(w: WorldState, war: War, winnerSide: 'A' | 'D' | null
     }
   }
   // 점령 해제, 휴전, 관계
-  for (const p of w.provinces) if (p.active && p.owner >= 0 && all.includes(p.owner) && p.controller !== p.owner) p.controller = p.owner;
+  // 이 전쟁의 점령지만 반환 (다른 전쟁에서 여전히 교전 중이면 유지)
+  for (const p of w.provinces) {
+    if (!p.active || p.owner < 0 || p.controller === p.owner || p.controller < 0) continue;
+    const opp = (war.attackers.includes(p.owner) && war.defenders.includes(p.controller)) || (war.defenders.includes(p.owner) && war.attackers.includes(p.controller));
+    if (opp && !atWar(w, p.owner, p.controller)) p.controller = p.owner;
+  }
   bumpControl();
   for (const a of war.attackers) for (const d of war.defenders) {
     if (!w.countries[a]?.alive || !w.countries[d]?.alive) continue;
@@ -437,15 +458,7 @@ export function applyPeace(w: WorldState, war: War, winnerSide: 'A' | 'D' | null
     addRel(w, a, d, winnerSide ? -10 : 15);
   }
   // 교전 부대 정리
-  w.battles = w.battles.filter(b => !(all.includes(b.attackerCountry) && all.includes(b.defenderCountry)));
-  for (const d of w.divisions) if (all.includes(d.owner)) {
-    d.battle = -1; d.path = [];
-    const p = w.provinces[d.province];
-    if (p.controller !== d.owner && !alliesOf(w, d.owner).includes(p.controller)) {
-      const cap = w.countries[d.owner].capital;
-      if (w.provinces[cap]?.controller === d.owner) d.province = cap;
-    }
-  }
+  rehomeDivisions(w, all);
   for (const c of all) { const C = w.countries[c]; if (C?.alive) { C.warExhaustion *= 0.6; } }
   if (wl >= 0 && w.countries[wl]?.alive) { w.countries[wl].legitimacy = Math.min(100, w.countries[wl].legitimacy + 10); w.countries[wl].stability += 5; }
   if (ll >= 0 && w.countries[ll]?.alive) { w.countries[ll].legitimacy -= 12; w.countries[ll].stability -= 8; }
@@ -454,6 +467,35 @@ export function applyPeace(w: WorldState, war: War, winnerSide: 'A' | 'D' | null
   war.result = `${res}${lines.length ? ' — ' + lines.join(', ') : ''}`;
   chronicle(w, 'war', `${war.name} 종결`, `${years}년간의 전쟁이 끝났다. ${war.result}. 총 사상자 ${Math.round((war.casualtiesA + war.casualtiesD) / 1000)}천 명.`, all.slice(0, 6), true);
   for (const c of all) if (w.countries[c]) checkDeath(w, c);
+}
+
+/**
+ * 전쟁 종료/이탈 후 부대 정리: 더 이상 교전하지 않는 상대와의 전투만 해제하고,
+ * 통행할 수 없게 된 지역의 부대는 가장 가까운 아군 지역으로 철수시킨다.
+ * (다른 전쟁에서 싸우는 부대는 그대로 둔다)
+ */
+export function rehomeDivisions(w: WorldState, owners: number[]) {
+  const set = new Set(owners);
+  w.battles = w.battles.filter(b => atWar(w, b.attackerCountry, b.defenderCountry));
+  const liveBattles = new Set(w.battles.map(b => b.id));
+  for (const d of w.divisions) {
+    if (!set.has(d.owner)) continue;
+    if (d.battle >= 0 && !liveBattles.has(d.battle)) d.battle = -1;
+    if (d.path.length && d.path.some(pid => !canEnter(w, d.owner, pid))) { d.path = []; d.progress = 0; }
+    if (canEnter(w, d.owner, d.province)) continue;
+    // 가장 가까운 통행 가능 지역 (BFS)
+    const seen = new Set([d.province]); const q = [d.province]; let found = -1;
+    while (q.length && found < 0) {
+      const c = q.shift()!;
+      for (const n of [...w.provinces[c].neighbors, ...w.provinces[c].seaNeighbors]) {
+        if (seen.has(n)) continue; seen.add(n);
+        if (w.provinces[n].active && canEnter(w, d.owner, n) && !atWar(w, d.owner, w.provinces[n].controller)) { found = n; break; }
+        if (seen.size < 400) q.push(n);
+      }
+    }
+    if (found < 0) { const cap = w.countries[d.owner]?.capital; found = cap !== undefined && w.provinces[cap]?.controller === d.owner ? cap : -1; }
+    if (found >= 0) { d.province = found; d.path = []; d.progress = 0; d.battle = -1; }
+  }
 }
 
 export function endAllWarsOf(w: WorldState, cid: number) {

@@ -129,7 +129,7 @@ export function divisionSpeed(w: WorldState, d: Division) {
   let sp = u.speed * (1 + 0.05 * c.tech.transport);
   if ((u.oil > 0) && c.stock.oil <= 0 && !w.rules.infiniteResources) sp *= 0.5;
   sp *= 0.5 + 0.5 * d.supply;
-  return sp * 0.8;
+  return sp * 0.65;
 }
 
 function winterFactor(w: WorldState, pid: number) {
@@ -190,7 +190,12 @@ export function dailyMilitary(w: WorldState) {
     if (d.progress >= len) {
       // 적 방어 부대 확인
       const hostile = w.divisions.some(o => o.province === next && atWar(w, o.owner, d.owner));
-      if (hostile) { d.progress = len; startOrJoinBattle(w, d, next); continue; }
+      if (hostile) {
+        d.progress = len;
+        // 조직력이 회복될 때까지 공격 대기 (연속 돌격으로 인한 순식간의 전투 방지)
+        if (d.org < 0.45) continue;
+        startOrJoinBattle(w, d, next); continue;
+      }
       d.province = next; d.path.shift(); d.progress = 0;
       if (N.dmzUntil > w.day && N.owner !== d.owner) N.dmzUntil = 0; // 비무장지대 위반
       occupy(w, d, next);
