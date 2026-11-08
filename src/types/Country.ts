@@ -97,6 +97,10 @@ export interface Country {
   productivity?: number;
   /** 이번 전쟁에서 수도 함락 횟수 */
   capLost?: number;
+  /** 부대 훈련 대기열 */
+  training?: import('./Military').TrainingOrder[];
+  /** 플레이어 국가 자동 모집 */
+  autoRecruit?: boolean;
   autoResearch?: boolean;
   avgUnrest?: number;
   lastCrisis?: number;

@@ -18,11 +18,14 @@ export function runCountryAI(w: WorldState, c: Country, playerControlled: boolea
     c.aiMilNext = w.day + (isAtWar(w, c.id) ? 2 : 5);
     operationsAI(w, c);
   }
-  if (playerControlled) return;
+  if (playerControlled) {
+    if (c.autoRecruit && w.day >= c.aiNext) { c.aiNext = w.day + 10; recruitAI(w, c); }
+    return;
+  }
   if (w.day < c.aiNext) return;
   c.aiNext = w.day + 8 + Math.floor(rand() * 6);
-  economyAI(w, c);
   recruitAI(w, c);
+  economyAI(w, c);
   diplomacyAI(w, c);
   if ((w.day + c.id) % 30 < 14) peaceAI(w, c);
   if (!c.researchFocus || rand() < 0.05) c.researchFocus = chooseResearch(w, c);

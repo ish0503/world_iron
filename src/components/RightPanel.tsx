@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useGame, useUI } from '../hooks/useGame';
 import { ui } from '../systems/UIStore';
 import { TERRAINS } from '../data/terrain';
@@ -94,25 +95,48 @@ function CountryInfo({ id }: { id: number }) {
 
 function ArmyInfo() {
   const g = useGame(); const w = g.world!;
-  const s = g.selection; if (s.kind !== 'army') return null;
+  const s = g.selection;
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  if (s.kind !== 'army') return null;
   const divs = w.divisions.filter(d => s.divs.includes(d.id));
   const canCmd = w.mode === 'god' || (w.mode === 'ruler' && s.owner === w.player);
+  const here = w.divisions.filter(d => d.province === s.province && d.owner === s.owner);
+  const reselect = (ids: number[]) => { if (ids.length) { g.select({ kind: 'army', province: s.province, owner: s.owner, divs: ids }); setChecked(new Set()); } };
+  const setStance = (ai: boolean, stance?: 'hold' | 'attack') => { for (const d of divs) { d.aiControlled = ai; if (stance) d.stance = stance; if (ai) { d.path = []; } } pushToast(ai ? (stance === 'attack' ? `${divs.length}개 사단: AI 공세 지휘` : `${divs.length}개 사단: AI 전선 유지`) : '직접 지휘로 전환', 'info'); g.emit(); };
+  const mode = divs.every(d => !d.aiControlled) ? 'manual' : divs.every(d => d.aiControlled && d.stance === 'attack') ? 'attack' : divs.every(d => d.aiControlled) ? 'hold' : 'mixed';
+  const sumStr = divs.reduce((a, d) => a + d.strength, 0);
   return (
     <>
-      <div className="chead"><Flag color={w.countries[s.owner].color} size={20} /><div><h3>{w.countries[s.owner].shortName} 부대</h3><div className="muted small">{w.provinces[s.province].name} · {divs.length}개 사단</div></div></div>
-      {canCmd && <div className="row">
-        <Btn small kind="primary" onClick={() => g.setTool({ kind: 'move' })}>➜ 이동 명령</Btn>
-        <Btn small onClick={() => { for (const d of divs) { d.path = []; d.progress = 0; } g.mapVersion++; g.emit(); }}>■ 정지</Btn>
-        <Btn small onClick={() => { const v = !divs.every(d => d.aiControlled); for (const d of divs) d.aiControlled = v; g.emit(); }}>{divs.every(d => d.aiControlled) ? 'AI 지휘 해제' : 'AI 지휘'}</Btn>
-        <Btn small kind="danger" onClick={() => { for (const d of divs) disband(w, d.id); g.select({ kind: 'none' }); pushToast('부대 해산', 'info'); }}>해산</Btn>
-      </div>}
-      {canCmd && <div className="muted small pad">PC: 지도에서 우클릭으로 이동 · 모바일: 이동 명령 후 지역 탭</div>}
+      <div className="chead"><Flag color={w.countries[s.owner].color} size={20} /><div><h3>{w.countries[s.owner].shortName} 부대</h3><div className="muted small">{w.provinces[s.province].name} · 선택 {divs.length}/{here.length}개 사단 · {fmtPop(sumStr)}명</div></div></div>
+      {canCmd && <>
+        <div className="row">
+          <Btn small kind="primary" onClick={() => g.setTool({ kind: 'move' })}>➜ 이동</Btn>
+          <Btn small onClick={() => { for (const d of divs) { d.path = []; d.progress = 0; } g.mapVersion++; g.emit(); }}>■ 정지</Btn>
+          <Btn small onClick={() => reselect(divs.slice(0, Math.ceil(divs.length / 2)).map(d => d.id))} disabled={divs.length < 2}>✂ 절반 분할</Btn>
+          <Btn small onClick={() => reselect(here.map(d => d.id))} disabled={here.length === divs.length}>⊕ 합류 ({here.length})</Btn>
+          {checked.size > 0 && <Btn small onClick={() => reselect([...checked])}>체크한 {checked.size}개만</Btn>}
+        </div>
+        <div className="stance">
+          <span className="muted small">지휘</span>
+          <button className={mode === 'manual' ? 'on' : ''} onClick={() => setStance(false)}>✋ 직접</button>
+          <button className={mode === 'hold' ? 'on' : ''} onClick={() => setStance(true, 'hold')}>🛡 전선 유지</button>
+          <button className={mode === 'attack' ? 'on' : ''} onClick={() => setStance(true, 'attack')}>⚔ 공세</button>
+        </div>
+        <div className="muted small pad">PC: 우클릭 이동 · 모바일: 이동 버튼 후 지역 탭 · 전선 유지/공세는 AI가 전선을 따라 배치·공격합니다</div>
+        <div className="row"><Btn small kind="danger" onClick={() => { for (const d of divs) disband(w, d.id); g.select({ kind: 'none' }); pushToast('부대 해산', 'info'); }}>해산</Btn></div>
+      </>}
       {divs.map(d => (
-        <div key={d.id} className="divcard">
-          <div><b>{d.name}</b> <span className="muted small">{UNITS[d.type].name}</span>{d.battle >= 0 && <span className="pill bad">전투 중</span>}{d.path.length > 0 && <span className="pill">→ {w.provinces[d.path[d.path.length - 1]].name}</span>}{d.aiControlled && <span className="pill">AI</span>}</div>
+        <div key={d.id} className={`divcard ${checked.has(d.id) ? 'chk' : ''}`}>
+          <div>
+            {canCmd && <input type="checkbox" checked={checked.has(d.id)} onChange={e => { const n = new Set(checked); if (e.target.checked) n.add(d.id); else n.delete(d.id); setChecked(n); }} />}
+            <b> {d.name}</b> <span className="muted small">{UNITS[d.type].name}</span>
+            {d.battle >= 0 && <span className="pill bad">전투 중</span>}{d.path.length > 0 && <span className="pill">→ {w.provinces[d.path[d.path.length - 1]].name}</span>}
+            {d.aiControlled && <span className="pill">{d.stance === 'attack' ? '⚔ 공세' : '🛡 유지'}</span>}
+          </div>
           <div className="barrow"><span>병력</span><Bar value={d.strength} max={d.maxStrength} color="#5fbf6a" /><b>{(d.strength / 1000).toFixed(1)}k</b></div>
           <div className="barrow"><span>조직력</span><Bar value={d.org} max={1} color="#6fa8dc" /><b>{(d.org * 100).toFixed(0)}</b></div>
           <div className="barrow"><span>보급</span><Bar value={d.supply} max={1} color={d.supply < 0.3 ? '#e5533d' : '#d4af37'} /><b>{(d.supply * 100).toFixed(0)}</b></div>
+          <div className="barrow"><span>참호</span><Bar value={d.entrench || 0} max={1} color="#a08a5a" /><b>{((d.entrench || 0) * 100).toFixed(0)}</b></div>
           <div className="small muted">사기 {(d.morale * 100).toFixed(0)} · 장비 {(d.equipment * 100).toFixed(0)}%</div>
         </div>
       ))}

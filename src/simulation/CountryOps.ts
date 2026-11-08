@@ -1,5 +1,6 @@
 import type { WorldState } from '../types/World';
 import type { GovType, Personality } from '../types/Country';
+import type { Division } from '../types/Military';
 import { GOVS, PERSONALITY_IDS, UNITS } from '../data/defs';
 import { genLeader, genRoot, genTag, hslColor } from '../data/names';
 import { newCountry } from './WorldGen';
@@ -128,10 +129,10 @@ export function spawnDivision(w: WorldState, owner: number, type: keyof typeof U
   const u = UNITS[type];
   const c = w.countries[owner];
   const count = w.divisions.filter(d => d.owner === owner && d.type === type).length + 1;
-  const d = {
+  const d: Division = {
     id: w.nextId.div++, owner, type, name: `제${count}${u.short}사단`, province, path: [], progress: 0,
     strength: u.hp * strengthFrac, maxStrength: u.hp, org: 0.6, morale: 0.8, equipment: 1, supply: 1, battle: -1,
-    aiControlled: owner !== w.player, outOfSupplyDays: 0,
+    aiControlled: owner !== w.player, outOfSupplyDays: 0, entrench: 0, stance: 'hold',
   };
   w.divisions.push(d);
   void c;

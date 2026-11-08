@@ -142,6 +142,7 @@ export { winterFactor };
 
 /** 일일 군사 처리: 보급, 회복, 이동 */
 export function dailyMilitary(w: WorldState) {
+  dailyTraining(w);
   const supplies = new Map<number, Float32Array>();
   const sup = (cid: number) => { let s = supplies.get(cid); if (!s) { s = computeSupply(w, cid); supplies.set(cid, s); } return s; };
   const toRemove = new Set<number>();
@@ -160,6 +161,8 @@ export function dailyMilitary(w: WorldState) {
       d.equipment = Math.max(0.2, d.equipment - 0.003);
       if (d.outOfSupplyDays > 75 && d.supply <= 0.05) toRemove.add(d.id);
     } else d.outOfSupplyDays = 0;
+    // 참호: 정지해 있으면 점차 구축, 이동하면 초기화
+    if (d.path.length) d.entrench = 0; else d.entrench = Math.min(1, (d.entrench || 0) + 0.015);
     if (d.battle < 0) {
       const base = (w.provinces[d.province].buildings.base || 0);
       d.org = Math.min(1, d.org + 0.026 * d.supply * (1 + 0.15 * base));
@@ -231,27 +234,67 @@ export function recruitCost(w: WorldState, cid: number, type: UnitType) {
   return UNITS[type].cost * (1 + Math.max(0, c.inflation) * 2) * (c.warEconomy ? 0.85 : 1);
 }
 
+export const TRAIN_DAYS: Record<UnitType, number> = { infantry: 45, artillery: 60, antitank: 60, antiair: 60, engineer: 50, special: 90, mechanized: 90, armor: 120 };
+
+/** 모집 비용: 부족한 철강은 국제 시장에서 구매 */
+export function recruitQuote(w: WorldState, cid: number, type: UnitType) {
+  const c = w.countries[cid]; const u = UNITS[type];
+  const steelShort = w.rules.infiniteResources ? 0 : Math.max(0, u.steel - Math.max(0, c.stock.steel));
+  return { cost: recruitCost(w, cid, type) + steelShort * w.prices.steel * 1.25, steelShort, days: trainDays(w, cid, type) };
+}
+export function trainDays(w: WorldState, cid: number, type: UnitType) {
+  const c = w.countries[cid];
+  return Math.round(TRAIN_DAYS[type] * (c.warEconomy ? 0.8 : 1) / (1 + 0.04 * c.tech.military));
+}
+export function trainingSlots(w: WorldState, cid: number) {
+  const c = w.countries[cid];
+  let bases = 0; for (const p of w.provinces) if (p.owner === cid) bases += p.buildings.base || 0;
+  return 3 + Math.floor(c.provinceCount / 6) + bases * 2 + (c.warEconomy ? 3 : 0);
+}
+
+/** 부대 모집: 비용·인력을 선지불하고 훈련 대기열에 넣는다 */
 export function recruit(w: WorldState, cid: number, type: UnitType, province?: number): string | null {
   const c = w.countries[cid]; const u = UNITS[type];
   if (!unitAvailable(w, cid, type)) return '기술이 부족합니다';
-  const cost = recruitCost(w, cid, type);
-  if (c.treasury < cost) return '국고가 부족합니다';
-  if (c.manpower < u.hp * 0.5) return '인력이 부족합니다';
-  if (!w.rules.infiniteResources && c.stock.steel < u.steel) return '철강이 부족합니다';
+  c.training ??= [];
+  if (c.training.length >= trainingSlots(w, cid)) return `훈련 시설이 가득 찼습니다 (${trainingSlots(w, cid)}개)`;
+  const q = recruitQuote(w, cid, type);
+  if (c.treasury < q.cost) return `국고가 부족합니다 (${q.cost.toFixed(1)}B 필요)`;
+  if (c.manpower < u.hp * 0.5) return '인력이 부족합니다 (징병률을 높이세요)';
   let pid = province ?? -1;
   if (pid < 0 || w.provinces[pid].controller !== cid) {
     pid = w.provinces[c.capital]?.controller === cid ? c.capital : -1;
-    let bb = -1;
-    for (const p of w.provinces) if (p.active && p.controller === cid && p.owner === cid && (p.buildings.base || 0) > bb && (pid < 0 || (p.buildings.base || 0) > 0)) { bb = p.buildings.base || 0; if (bb > 0 || pid < 0) pid = p.id; }
+    let bb = 0;
+    for (const p of w.provinces) if (p.active && p.controller === cid && p.owner === cid && (p.buildings.base || 0) > bb) { bb = p.buildings.base || 0; pid = p.id; }
+    if (pid < 0) for (const p of w.provinces) if (p.active && p.controller === cid) { pid = p.id; break; }
   }
   if (pid < 0) return '배치할 영토가 없습니다';
-  c.treasury -= cost;
-  c.stock.steel -= w.rules.infiniteResources ? 0 : u.steel;
-  const str = Math.min(u.hp, c.manpower);
-  c.manpower -= str;
-  const d = spawnDivision(w, cid, type, pid, str / u.hp);
-  d.org = 0.35;
+  c.treasury -= q.cost;
+  if (!w.rules.infiniteResources) c.stock.steel = Math.max(0, c.stock.steel - (u.steel - q.steelShort));
+  const mp = Math.min(u.hp, c.manpower);
+  c.manpower -= mp;
+  c.training.push({ type, days: q.days, total: q.days, province: pid, manpower: mp });
   return null;
+}
+
+/** 훈련 진행 → 완료 시 사단 배치 */
+export function dailyTraining(w: WorldState) {
+  for (const c of w.countries) {
+    if (!c.alive || !c.training?.length) continue;
+    for (const t of c.training) t.days--;
+    const done = c.training.filter(t => t.days <= 0);
+    if (!done.length) continue;
+    c.training = c.training.filter(t => t.days > 0);
+    for (const t of done) {
+      let pid = t.province;
+      if (w.provinces[pid]?.controller !== c.id) pid = w.provinces[c.capital]?.controller === c.id ? c.capital : (w.provinces.find(p => p.controller === c.id)?.id ?? -1);
+      if (pid < 0) { c.manpower += t.manpower; continue; }
+      const d = spawnDivision(w, c.id, t.type, pid, Math.max(0.3, t.manpower / UNITS[t.type].hp));
+      d.org = 0.6; d.stance = 'hold';
+      d.aiControlled = c.id !== w.player || !!c.autoRecruit || w.mode !== 'ruler';
+      if (c.id === w.player && w.mode === 'ruler') d.aiControlled = false;
+    }
+  }
 }
 
 export function disband(w: WorldState, id: number) {

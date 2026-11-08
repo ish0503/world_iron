@@ -178,6 +178,17 @@
 .menufoot { text-align: center; font-size: 11px; color: var(--muted); margin-top: 16px; }
 .mobile-menu { display: none; }
 
+/* ── 지휘 ── */
+.stance { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.stance button { background: #111e2e; border: 1px solid var(--line2); border-radius: 6px; padding: 5px 9px; font-size: 12px; }
+.stance button.on { border-color: var(--gold); color: var(--gold2); background: rgba(212,175,55,.14); }
+.seg3 { display: flex; gap: 4px; margin: 4px 0; }
+.seg3 button { background: #111e2e; border: 1px solid var(--line2); border-radius: 6px; padding: 3px 10px; font-size: 12px; }
+.seg3 button.on { border-color: var(--gold); color: var(--gold2); }
+.trainq { margin-top: 6px; }
+.divcard.chk { border-color: var(--gold); }
+.divcard input[type=checkbox] { vertical-align: -3px; }
+
 /* ── 전쟁 현황판 ── */
 .warhud { position: absolute; left: 70px; top: 10px; width: 300px; background: rgba(12,18,28,.9); border: 1px solid rgba(255,80,60,.45); border-radius: 8px; z-index: 5; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
 .has-left .warhud { left: 432px; }

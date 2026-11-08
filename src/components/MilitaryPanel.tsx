@@ -1,6 +1,7 @@
 import { useGame } from '../hooks/useGame';
 import { UNITS, UNIT_TYPES, SHIPS, PLANES } from '../data/defs';
-import { recruit, recruitCost, unitAvailable, buyShip, buyPlanes } from '../simulation/MilitarySimulation';
+import { recruit, recruitQuote, unitAvailable, buyShip, buyPlanes, trainingSlots } from '../simulation/MilitarySimulation';
+import { useState } from 'react';
 import { navalPower, airPower } from '../simulation/EconomySimulation';
 import { warsOf, chronicle, addRel } from '../simulation/WorldHelpers';
 import { warScore, sideOf } from '../simulation/WarSimulation';
@@ -33,6 +34,40 @@ export function WarList({ cid, canAct }: { cid: number; canAct: boolean }) {
   })}</>;
 }
 
+function RecruitSection({ cid }: { cid: number }) {
+  const g = useGame(); const w = g.world!; const c = w.countries[cid];
+  const [n, setN] = useState(1);
+  const sel = g.selection;
+  const pid = sel.kind === 'province' && w.provinces[sel.id].controller === cid ? sel.id : undefined;
+  const doRecruit = (t: UnitType) => {
+    let ok = 0, err: string | null = null;
+    for (let i = 0; i < n; i++) { err = recruit(w, cid, t, pid); if (err) break; ok++; }
+    pushToast(ok ? `${UNITS[t].name} ${ok}개 훈련 시작${err ? ` (중단: ${err})` : ''}` : (err ?? ''), ok ? 'info' : 'war'); g.emit();
+  };
+  const q = c.training || [];
+  return (
+    <Section title={`부대 모집 · 훈련 ${q.length}/${trainingSlots(w, cid)}`} right={<label className="check small"><input type="checkbox" checked={!!c.autoRecruit} onChange={e => { c.autoRecruit = e.target.checked; g.emit(); }} /> 자동 모집</label>}>
+      <div className="row small"><span className="muted">배치: {pid !== undefined ? w.provinces[pid].name : '수도/군사기지 (지도에서 자국 지역 선택 시 그곳)'}</span></div>
+      <div className="seg3">{[1, 3, 5].map(k => <button key={k} className={n === k ? 'on' : ''} onClick={() => setN(k)}>×{k}</button>)}</div>
+      <div className="unitgrid">
+        {UNIT_TYPES.map(t => {
+          const u = UNITS[t]; const ok = unitAvailable(w, cid, t); const qt = recruitQuote(w, cid, t);
+          return (
+            <button key={t} className="unitbtn" disabled={!ok} onClick={() => doRecruit(t)} title={`공격 ${u.atk} 방어 ${u.def} 돌파 ${u.brk} 속도 ${u.speed}${!ok ? ' — 요구 기술: ' + JSON.stringify(u.req) : ''}`}>
+              <b>{u.name}</b><span className="small muted">{fmtMoney(qt.cost)} · {qt.days}일 · {u.hp / 1000}k명</span>
+              <span className="small">공{u.atk} 방{u.def} 돌{u.brk}{qt.steelShort > 0 ? ' · 철강 수입' : ''}</span>
+            </button>
+          );
+        })}
+      </div>
+      {q.length > 0 && <div className="trainq">{q.map((t, i) => (
+        <div key={i} className="barrow"><span>{UNITS[t.type].short}</span><Bar value={t.total - t.days} max={t.total} color="#d4af37" /><b>{t.days}일</b></div>
+      ))}</div>}
+      <div className="small muted">가용 인력 {fmtPop(c.manpower)} · 인력이 부족하면 정치 탭에서 징병률을 높이세요</div>
+    </Section>
+  );
+}
+
 export function MilitaryPanel() {
   const g = useGame(); const w = g.world!;
   const { cid, canAct } = subject();
@@ -41,8 +76,6 @@ export function MilitaryPanel() {
   const divs = w.divisions.filter(d => d.owner === cid);
   const byProv = new Map<number, typeof divs>();
   for (const d of divs) { if (!byProv.has(d.province)) byProv.set(d.province, []); byProv.get(d.province)!.push(d); }
-  const aiAll = divs.length > 0 && divs.every(d => d.aiControlled);
-  const doRecruit = (t: UnitType) => { const e = recruit(w, cid, t); pushToast(e ?? `${UNITS[t].name} 편성 완료`, e ? 'war' : 'info'); g.mapVersion++; g.emit(); };
   return (
     <div>
       <Section title="군사 현황">
@@ -53,22 +86,17 @@ export function MilitaryPanel() {
         {(c.nukes || 0) > 0 && <Stat k="☢ 핵탄두" v={`${c.nukes}기`} tone="warn" />}
         {canAct && (c.nukes || 0) > 0 && warsOf(w, cid).length > 0 && <Btn small kind="danger" onClick={() => { g.setTool({ kind: 'god', action: 'nuke' }); pushToast('핵 공격 목표(교전국 영토)를 지도에서 선택하세요', 'war'); }}>☢ 핵 공격 (국제적 비난, 보복 위험)</Btn>}
         {canAct && (c.nukes || 0) === 0 && c.tech.energy >= 7 && c.tech.military >= 7 && <Btn small disabled={c.treasury < c.gdp * 0.05} onClick={() => { c.treasury -= c.gdp * 0.05; c.nukes = (c.nukes || 0) + 5; chronicle(w, 'war', `☢ ${c.shortName} 핵무장`, `${c.name}이(가) 핵무기 개발에 성공했다.`, [cid], true); for (const o of w.countries) if (o.alive && o.id !== cid) addRel(w, cid, o.id, -15); g.emit(); }}>☢ 핵무기 개발 (GDP 5%, 관계 악화)</Btn>}
-        {canAct && <label className="check"><input type="checkbox" checked={aiAll} onChange={e => { for (const d of divs) d.aiControlled = e.target.checked; g.emit(); }} /> AI 전선 지휘 (모든 사단 자동 작전)</label>}
       </Section>
       <Section title="전쟁"><WarList cid={cid} canAct={canAct} /></Section>
-      {canAct && (
-        <Section title="육군 편성">
-          <div className="unitgrid">
-            {UNIT_TYPES.map(t => {
-              const u = UNITS[t]; const ok = unitAvailable(w, cid, t);
-              return (
-                <button key={t} className="unitbtn" disabled={!ok} onClick={() => doRecruit(t)} title={`공격 ${u.atk} 방어 ${u.def} 돌파 ${u.brk} 속도 ${u.speed}${!ok ? ' — 요구 기술: ' + JSON.stringify(u.req) : ''}`}>
-                  <b>{u.name}</b><span className="small muted">{fmtMoney(recruitCost(w, cid, t))} · {u.hp / 1000}k명 · 철강 {u.steel}</span>
-                  <span className="small">공{u.atk} 방{u.def} 돌{u.brk}</span>
-                </button>
-              );
-            })}
+      {canAct && <RecruitSection cid={cid} />}
+      {canAct && divs.length > 0 && (
+        <Section title="전군 지휘">
+          <div className="stance">
+            <button onClick={() => { for (const d of divs) d.aiControlled = false; g.emit(); }}>✋ 전군 직접 지휘</button>
+            <button onClick={() => { for (const d of divs) { d.aiControlled = true; d.stance = 'hold'; } g.emit(); }}>🛡 전군 전선 유지</button>
+            <button onClick={() => { for (const d of divs) { d.aiControlled = true; d.stance = 'attack'; } g.emit(); }}>⚔ 전군 공세</button>
           </div>
+          <div className="small muted">AI 지휘 부대는 적과 맞닿은 모든 지역에 병력을 배치해 전선을 유지하고, 위협이 큰 곳을 보강하며, 승산이 높은 지점에 병력을 집중해 공격합니다. 정지한 부대는 참호를 파 방어력이 오릅니다.</div>
         </Section>
       )}
       <Section title="해군">

@@ -186,7 +186,8 @@ export function dailyBattles(w: WorldState) {
     // P_defense = D × F × E × R
     const F = 1 + 0.15 * (p.buildings.fort || 0);
     const E = td.def;
-    const R = (1 + 0.07 * cd.tech.military) * (0.85 + rand() * 0.3) * (pd.eng ? 1.1 : 1);
+    const entr = D.reduce((a, d) => a + (d.entrench || 0), 0) / D.length;
+    const R = (1 + 0.07 * cd.tech.military) * (0.85 + rand() * 0.3) * (pd.eng ? 1.1 : 1) * (1 + 0.3 * entr);
     const M_d = 0.3 + 0.7 * pd.org * avg(D.map(d => d.morale));
     const Pdef = pd.raw * F * E * R * M_d * (0.4 + 0.6 * pd.sup) * airMulD;
     // 피해 계산

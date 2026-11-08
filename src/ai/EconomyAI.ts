@@ -25,7 +25,9 @@ export function economyAI(w: WorldState, c: Country) {
   c.warEconomy = war && c.warExhaustion < 70;
   c.conscription = clamp(war ? 0.05 + P.mil * 0.01 : 0.02 + P.mil * 0.008, 0.01, 0.1);
   // 건설
-  const spendable = c.treasury - Math.max(2, c.gdp * 0.04);
+  // 군비 예비금을 남기고 건설 (전시에는 더 많이)
+  const reserve = Math.max(2, c.gdp * (war ? 0.08 : 0.04));
+  const spendable = c.treasury - reserve;
   if (spendable <= 0) return;
   const own = w.provinces.filter(p => p.active && p.owner === c.id && p.controller === c.id && !p.construction);
   if (!own.length) return;
@@ -35,7 +37,7 @@ export function economyAI(w: WorldState, c: Country) {
     if (!choice) break;
     const [pid, b] = choice;
     const lvl = w.provinces[pid].buildings[b] || 0;
-    if (buildCost(w, c, b, lvl) > c.treasury - Math.max(2, c.gdp * 0.04)) break;
+    if (buildCost(w, c, b, lvl) > c.treasury - reserve) break;
     startConstruction(w, c.id, pid, b);
     const i = own.findIndex(p => p.id === pid); if (i >= 0) own.splice(i, 1);
   }

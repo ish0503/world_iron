@@ -20,7 +20,15 @@ export interface Division {
   battle: number;             // 참여 중인 전투 id (-1)
   aiControlled: boolean;
   outOfSupplyDays: number;
+  /** 참호 구축도 0~1 (정지 시 증가, 방어 보너스) */
+  entrench?: number;
+  /** AI 지휘 시 태세: hold 전선 유지 · attack 공세 */
+  stance?: 'hold' | 'attack';
+  /** 소속 군 번호 (표시용) */
+  army?: number;
 }
+
+export interface TrainingOrder { type: UnitType; days: number; total: number; province: number; manpower: number; }
 
 export interface Battle {
   id: number;
