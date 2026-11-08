@@ -1,0 +1,27 @@
+{
+  "name": "world-dominion",
+  "private": true,
+  "version": "1.0.0",
+  "description": "WORLD DOMINION — Grand Strategy & World Simulation",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "sim-test": "esbuild scripts/sim-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sim-test.mjs && node node_modules/.cache/sim-test.mjs"
+  },
+  "dependencies": {
+    "idb": "8.0.3",
+    "pixi.js": "8.13.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}
