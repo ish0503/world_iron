@@ -32,6 +32,10 @@ export class MapRenderer {
   ctx: CanvasRenderingContext2D;
   img!: ImageData;
   buf!: Uint32Array;
+  /** GPU 업로드용 원시 RGBA 바이트 (캔버스 경유 없이 → ReadPixels 정지 방지) */
+  bytes!: Uint8Array;
+  /** 2D 캔버스에도 그릴지 (메뉴 배경용) */
+  canvasOutput = true;
   W = 0; H = 0;
   terrainCol: Uint32Array = new Uint32Array(0);  // 셀별 음영 지형 색 (RGB packed)
   bbox: Int32Array = new Int32Array(0);          // 프로빈스별 x0,y0,x1,y1
@@ -41,7 +45,8 @@ export class MapRenderer {
   lastOwner: Int32Array = new Int32Array(0);
   lastCtl: Int32Array = new Int32Array(0);
 
-  constructor(w: WorldState) {
+  constructor(w: WorldState, canvasOutput = true) {
+    this.canvasOutput = canvasOutput;
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: false })!;
     this.resize(w);
@@ -49,9 +54,11 @@ export class MapRenderer {
 
   resize(w: WorldState) {
     this.W = w.width; this.H = w.height;
-    this.canvas.width = w.width * CELL; this.canvas.height = w.height * CELL;
-    this.img = this.ctx.createImageData(this.canvas.width, this.canvas.height);
+    const pw = w.width * CELL, ph = w.height * CELL;
+    if (this.canvasOutput) { this.canvas.width = pw; this.canvas.height = ph; } else { this.canvas.width = 1; this.canvas.height = 1; }
+    this.img = new ImageData(pw, ph);
     this.buf = new Uint32Array(this.img.data.buffer);
+    this.bytes = new Uint8Array(this.img.data.buffer);
   }
 
   /** 지형 음영 & 프로빈스 경계 상자 계산 (지형 변경 시) */
@@ -180,7 +187,7 @@ export class MapRenderer {
       this.renderRect(w, o, this.bbox[b] - 1, this.bbox[b + 1] - 1, this.bbox[b + 2] + 1, this.bbox[b + 3] + 1);
     }
     for (const p of w.provinces) { this.lastOwner[p.id] = p.owner; this.lastCtl[p.id] = p.controller; }
-    this.ctx.putImageData(this.img, 0, 0);
+    if (this.canvasOutput) this.ctx.putImageData(this.img, 0, 0);
   }
 
   private renderRect(w: WorldState, o: RenderOpts, x0: number, y0: number, x1: number, y1: number) {

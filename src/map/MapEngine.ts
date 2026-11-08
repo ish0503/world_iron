@@ -1,4 +1,6 @@
-import { Application, Container, Sprite, Texture } from 'pixi.js';
+import { Application, Container, Sprite, Texture, BufferImageSource } from 'pixi.js';
+
+export const IS_MOBILE = typeof window !== 'undefined' && (window.innerWidth < 760 || matchMedia('(pointer: coarse)').matches);
 import { game } from '../systems/GameController';
 import { MapRenderer, CELL, type RenderOpts } from './MapRenderer';
 import { MapCamera } from './MapCamera';
@@ -9,6 +11,7 @@ export interface MapCallbacks {
   onClick: (c: MapClick) => void;
   onPaint: (cellX: number, cellY: number, first: boolean) => boolean; // true = 브러시 도구 사용 중
   onHover: (province: number, sx: number, sy: number) => void;
+  onContextLost?: () => void;
 }
 
 /** PixiJS 기반 세계 지도 엔진 */
@@ -37,10 +40,12 @@ export class MapEngine {
   constructor(el: HTMLElement, cb: MapCallbacks) { this.el = el; this.cb = cb; }
 
   async init() {
-    await this.app.init({ background: 0x0a1424, resizeTo: this.el, antialias: true, autoDensity: true, resolution: Math.min(2, window.devicePixelRatio || 1), preference: 'webgl' });
+    await this.app.init({ background: 0x0a1424, resizeTo: this.el, antialias: !IS_MOBILE, autoDensity: true, resolution: Math.min(IS_MOBILE ? 1.5 : 2, window.devicePixelRatio || 1), preference: 'webgl', powerPreference: IS_MOBILE ? 'low-power' : 'high-performance' });
     if (this.destroyed) { this.app.destroy(true); return; }
     this.el.appendChild(this.app.canvas);
     this.app.canvas.style.touchAction = 'none';
+    // 모바일에서 GPU 메모리 부족 등으로 WebGL 컨텍스트가 사라지면 지도를 다시 만든다
+    this.app.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.lost = true; this.cb.onContextLost?.(); }, false);
     this.app.stage.addChild(this.world);
     this.world.addChild(this.layers.root);
     this.bindInput();
@@ -53,7 +58,8 @@ export class MapEngine {
   destroy() {
     this.destroyed = true;
     this.ro?.disconnect();
-    if (this.ready) this.app.destroy(true, { children: true, texture: true });
+    if (this.ready) { try { this.app.destroy(true, { children: true, texture: true }); } catch { /* 컨텍스트 손실 시 무시 */ } }
+    this.tex = null; this.renderer = null;
   }
 
   private onResize() {
@@ -82,21 +88,22 @@ export class MapEngine {
 
   private update() {
     const w = game.world;
-    if (!w || !this.ready) return;
+    if (!w || !this.ready || this.lost) return;
     const now = performance.now();
     if (game.terrainVersion !== this.seenTerrain) {
       this.seenTerrain = game.terrainVersion;
       const sizeChanged = !this.renderer || this.renderer.W !== w.width || this.renderer.H !== w.height;
       if (sizeChanged) {
-        // 새 캔버스와 텍스처 (세계 크기가 바뀐 경우)
-        this.renderer = new MapRenderer(w);
+        // 새 버퍼와 텍스처 (세계 크기가 바뀐 경우)
+        this.renderer = new MapRenderer(w, false);
         this.renderer.prepareTerrain(w);
         this.renderer.render(w, this.opts());
         const old = this.tex;
-        this.tex = Texture.from({ resource: this.renderer.canvas, scaleMode: 'nearest' } as any);
+        const src = new BufferImageSource({ resource: this.renderer.bytes, width: this.renderer.W * CELL, height: this.renderer.H * CELL, scaleMode: 'nearest' });
+        this.tex = new Texture({ source: src });
         if (!this.sprite) { this.sprite = new Sprite(this.tex); this.world.addChildAt(this.sprite, 0); }
         else this.sprite.texture = this.tex;
-        old?.destroy(false);
+        old?.destroy(true);
         this.cam.worldW = 1;
       } else {
         this.renderer!.prepareTerrain(w);
@@ -111,7 +118,7 @@ export class MapEngine {
     }
     const r = this.renderer!;
     const mapChanged = game.mapVersion !== this.seenMap;
-    if (mapChanged && now - this.lastPixel > 120) {
+    if (mapChanged && now - this.lastPixel > (IS_MOBILE ? 350 : 120)) {
       this.seenMap = game.mapVersion;
       this.lastPixel = now;
       const o = this.opts(); const key = JSON.stringify(o);
@@ -145,7 +152,7 @@ export class MapEngine {
       this.labelsDirty = false; this.lastLabels = now;
       this.layers.updateLabels(w, game.settings.showLabels);
     }
-    if (this.overlayDirty && now - this.lastOverlay > 50) {
+    if (this.overlayDirty && now - this.lastOverlay > (IS_MOBILE ? 120 : 50)) {
       this.overlayDirty = false; this.lastOverlay = now;
       this.layers.updateCities(w, this.cam);
       this.layers.updateUnits(w, this.cam, game.selection, game.settings.showUnits);
@@ -154,11 +161,13 @@ export class MapEngine {
       this.layers.updateDiplo(w, game.selection, this.cam, game.mapMode);
     }
     this.layers.updateBattles(w, this.cam, now / 1000);
-    this.layers.sprites.update(w, this.cam, now / 1000, game.selection, game.settings.showUnits);
+    if (!IS_MOBILE || now - this.lastSprites > 33) { this.lastSprites = now; this.layers.sprites.update(w, this.cam, now / 1000, game.selection, game.settings.showUnits); }
     const t = game.tool;
     this.layers.drawBrush((this.hoverCell.x + 0.5) * CELL, (this.hoverCell.y + 0.5) * CELL, t.kind === 'terrain' ? t.radius : 0, this.cam, t.kind === 'terrain' && this.hoverCell.x >= 0);
   }
   private overlayDirty = true;
+  private lost = false;
+  private lastSprites = 0;
   private frontDirty = true;
   private camPos = '';
 

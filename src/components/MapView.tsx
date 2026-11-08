@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapEngine } from '../map/MapEngine';
 import { game, type MapMode } from '../systems/GameController';
 import { ui } from '../systems/UIStore';
@@ -10,6 +10,7 @@ import { cityTier, RESOURCES } from '../data/defs';
 import { DISASTERS, type DisasterType } from '../simulation/EnvironmentSimulation';
 import { computeBlocs } from '../simulation/Blocs';
 import { WarHud } from './WarHud';
+import { pushToast } from '../systems/EventManager';
 
 const GOD_LABEL: Record<string, string> = { war: '⚔ 전쟁 강제: 공격국 → 대상국 순서로 클릭', merge: '🔗 통합: 주체 국가 → 흡수될 국가 순서로 클릭', createCountry: '🏳 국가 건국', independence: '🗽 지역 독립', deleteCountry: '✖ 국가 삭제', unclaim: '◻ 영토 해방', capital: '★ 수도 지정', city: '🏙 도시 건설', port: '⚓ 항구 건설', 'pop+': '👥 인구 증가', 'pop-': '💀 인구 감소', nuke: '☢ 핵 공격: 목표 지역 선택', resource: '⛏ 자원 설정', disaster: '🌋 자연재해' };
 
@@ -35,9 +36,11 @@ export function MapView() {
   const host = useRef<HTMLDivElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const g = useGame();
+  const [gen, setGen] = useState(0);
   useEffect(() => {
     const el = host.current!;
     const eng = new MapEngine(el, {
+      onContextLost: () => { pushToast('그래픽 메모리 부족 — 지도를 다시 불러옵니다', 'war'); setTimeout(() => setGen(x => x + 1), 600); },
       onClick: handleClick,
       onPaint: handlePaint,
       onHover: (pid, x, y) => {
@@ -54,12 +57,14 @@ export function MapView() {
     });
     ui.map = eng; (globalThis as any).__uiMap = eng;
     eng.init();
-    return () => { eng.destroy(); if (ui.map === eng) ui.map = null; };
-  }, []);
+    const prevCam = gen > 0 && (globalThis as any).__lastCam;
+    if (prevCam) setTimeout(() => { eng.cam.x = prevCam.x; eng.cam.y = prevCam.y; eng.cam.zoom = prevCam.zoom; }, 300);
+    return () => { (globalThis as any).__lastCam = { x: eng.cam.x, y: eng.cam.y, zoom: eng.cam.zoom }; eng.destroy(); if (ui.map === eng) ui.map = null; };
+  }, [gen]);
   const w = g.world;
   return (
     <div className="mapwrap">
-      <div ref={host} className="map" />
+      <div ref={host} key={gen} className="map" />
       <div ref={tip} className="maptip" />
       <div className="mapmodes">
         {MAP_MODES.map(m => (

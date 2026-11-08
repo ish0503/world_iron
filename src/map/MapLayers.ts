@@ -1,4 +1,4 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Container, Graphics, Text, TextStyle, BitmapText, BitmapFont } from 'pixi.js';
 import type { WorldState } from '../types/World';
 import type { Selection } from '../systems/GameController';
 import { CELL } from './MapRenderer';
@@ -26,9 +26,9 @@ export class MapLayers {
   select = new Graphics();
   brush = new Graphics();
   private labelPool = new Map<number, Text>();
-  private cityPool: Text[] = [];
-  private unitTexts: Text[] = [];
-  private battleTexts: Text[] = [];
+  private cityText = new Map<number, Text>();
+  private unitTexts: BitmapText[] = [];
+  private battleTexts: BitmapText[] = [];
   stacks: UnitStack[] = [];
   sprites = new UnitSprites();
   fronts = new Graphics();
@@ -37,6 +37,8 @@ export class MapLayers {
   private frontAt = 0;
 
   constructor() {
+    // 숫자 표시용 비트맵 글꼴 (텍스트가 바뀌어도 다시 래스터화하지 않음 → 모바일 GPU 부담 감소)
+    try { BitmapFont.install({ name: 'wd-num', style: { fontFamily: FONT, fontSize: 20, fontWeight: '700', fill: 0xffffff }, chars: [['0', '9'], 'k·.+-xX⚔', ' '], resolution: 1 }); } catch { /* 이미 설치됨 */ }
     this.cities.addChild(this.cityG);
     this.units.addChild(this.unitG);
     this.battles.addChild(this.battleG);
@@ -52,13 +54,13 @@ export class MapLayers {
       const c = w.countries[inf.id];
       let t = this.labelPool.get(inf.id);
       if (!t) {
-        t = new Text({ text: c.shortName, style: new TextStyle({ fontFamily: FONT, fontSize: 48, fontWeight: '800', fill: 0xffffff, stroke: { color: 0x10151c, width: 6, join: 'round' }, letterSpacing: 2 }) });
-        t.anchor.set(0.5); t.resolution = 2; t.alpha = 0.8;
+        t = new Text({ text: c.shortName, style: new TextStyle({ fontFamily: FONT, fontSize: 36, fontWeight: '800', fill: 0xffffff, stroke: { color: 0x10151c, width: 6, join: 'round' }, letterSpacing: 2 }) });
+        t.anchor.set(0.5); t.resolution = window.innerWidth < 760 ? 1.5 : 2; t.alpha = 0.8;
         this.labels.addChild(t); this.labelPool.set(inf.id, t);
       }
       if (t.text !== c.shortName) t.text = c.shortName;
       t.position.set(inf.x, inf.y);
-      t.scale.set(inf.size / 48);
+      t.scale.set(inf.size / 36);
       t.visible = true;
     }
     for (const [id, t] of this.labelPool) if (!seen.has(id)) t.visible = false;
@@ -67,7 +69,7 @@ export class MapLayers {
   updateCities(w: WorldState, cam: MapCamera) {
     const g = this.cityG; g.clear();
     const z = cam.zoom; const inv = 1 / z;
-    let ti = 0;
+    let ti = 0; const shown = new Set<number>();
     const capitals = new Set(w.countries.filter(c => c.alive && (z > 1.3 || c.provinceCount >= 3 || w.countries.length < 60)).map(c => c.capital));
     for (const p of w.provinces) {
       if (!p.active) continue;
@@ -85,13 +87,15 @@ export class MapLayers {
         g.rect(x - s, y - s, s * 2, s * 2).fill({ color: 0xf2f2f2 }).stroke({ width: 1 * inv, color: 0x111111 });
       }
       if (z > 2.2 || (isCap && z > 1.2)) {
-        let t = this.cityPool[ti];
-        if (!t) { t = new Text({ text: '', style: new TextStyle({ fontFamily: FONT, fontSize: 12, fontWeight: '600', fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' } }) }); t.resolution = 2; t.anchor.set(0.5, 0); this.cities.addChild(t); this.cityPool.push(t); }
+        // 프로빈스별 고정 텍스트 (이름이 바뀔 때만 다시 그림)
+        let t = this.cityText.get(p.id);
+        if (!t) { t = new Text({ text: p.name, style: new TextStyle({ fontFamily: FONT, fontSize: 12, fontWeight: '600', fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' } }) }); t.resolution = window.innerWidth < 760 ? 1.5 : 2; t.anchor.set(0.5, 0); this.cities.addChild(t); this.cityText.set(p.id, t); }
         if (t.text !== p.name) t.text = p.name;
-        t.position.set(x, y + 6 * inv); t.scale.set(inv); t.visible = true; ti++;
+        t.position.set(x, y + 6 * inv); t.scale.set(inv); t.visible = true; shown.add(p.id); ti++;
       }
     }
-    for (let i = ti; i < this.cityPool.length; i++) this.cityPool[i].visible = false;
+    for (const [id, t] of this.cityText) if (!shown.has(id)) t.visible = false;
+    void ti;
   }
 
   /** 부대 스택 계산 & 그리기 */
@@ -157,7 +161,7 @@ export class MapLayers {
         if (s.battle) continue;
         const c2 = w.countries[s.owner];
         let t2 = this.unitTexts[ti];
-        if (!t2) { t2 = new Text({ text: '', style: new TextStyle({ fontFamily: FONT, fontSize: 10, fontWeight: '700', fill: 0xffffff }) }); t2.resolution = 2; t2.anchor.set(0, 0.5); this.units.addChild(t2); this.unitTexts.push(t2); }
+        if (!t2) { t2 = new BitmapText({ text: '', style: { fontFamily: 'wd-num', fontSize: 10 } }); t2.anchor.set(0, 0.5); this.units.addChild(t2); this.unitTexts.push(t2); }
         const lb = `${Math.round(s.strength / 1000)}k`;
         if (t2.text !== lb) t2.text = lb;
         const yy = s.y - 6 * inv - 4;
@@ -176,7 +180,7 @@ export class MapLayers {
       else if (s.moving) g.rect(x + W - 4 * inv, y + 1 * inv, 3 * inv, H - 2 * inv).fill({ color: 0x40d0ff });
       if (showText) {
         let t = this.unitTexts[ti];
-        if (!t) { t = new Text({ text: '', style: new TextStyle({ fontFamily: FONT, fontSize: 10, fontWeight: '700', fill: 0xffffff }) }); t.resolution = 2; t.anchor.set(0, 0.5); this.units.addChild(t); this.unitTexts.push(t); }
+        if (!t) { t = new BitmapText({ text: '', style: { fontFamily: 'wd-num', fontSize: 10 } }); t.anchor.set(0, 0.5); this.units.addChild(t); this.unitTexts.push(t); }
         const label = s.divs.length > 1 ? `${s.divs.length}·${Math.round(s.strength / 1000)}k` : `${Math.round(s.strength / 1000)}k`;
         if (t.text !== label) t.text = label;
         t.position.set(x + 10.5 * inv, s.y); t.scale.set(inv * 0.95); t.visible = true; ti++;
@@ -195,7 +199,7 @@ export class MapLayers {
       const pulse = 1 + Math.sin(t * 6 + b.id) * 0.15;
       g.circle(x, y, 8 * inv * pulse).fill({ color: 0xb01818, alpha: 0.9 }).stroke({ width: 1.5 * inv, color: 0xffd0a0 });
       let tx = this.battleTexts[ti];
-      if (!tx) { tx = new Text({ text: '⚔', style: new TextStyle({ fontFamily: FONT, fontSize: 12, fill: 0xffffff }) }); tx.anchor.set(0.5); tx.resolution = 2; this.battles.addChild(tx); this.battleTexts.push(tx); }
+      if (!tx) { tx = new BitmapText({ text: 'X', style: { fontFamily: 'wd-num', fontSize: 12 } }); tx.anchor.set(0.5); this.battles.addChild(tx); this.battleTexts.push(tx); }
       tx.position.set(x, y); tx.scale.set(inv * pulse); tx.visible = true; ti++;
     }
     for (let i = ti; i < this.battleTexts.length; i++) this.battleTexts[i].visible = false;
@@ -205,7 +209,7 @@ export class MapLayers {
   updateFronts(w: WorldState, cam: MapCamera, dirty: boolean): boolean {
     const now = performance.now();
     let done = !dirty;
-    if (dirty && now - this.frontAt > 450) {
+    if (dirty && now - this.frontAt > (typeof window !== 'undefined' && window.innerWidth < 760 ? 1500 : 450)) {
       done = true;
       this.frontAt = now;
       const segs: number[] = [];

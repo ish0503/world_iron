@@ -48,10 +48,20 @@ export class GameController {
   private last = 0;
   private uiAcc = 0;
   private lastAutosaveMonth = -1;
+  private lastSaveAt = Date.now();
+  private saving = false;
+  private errorCount = 0;
   perf = { dayMs: 0, days: 0 };
   busy: { msg: string; p: number } | null = null;
 
   constructor() {
+    // 앱 전환/화면 꺼짐 시 저장 (모바일에서 백그라운드 탭이 종료돼도 이어하기 가능)
+    if (typeof document !== 'undefined') {
+      const bg = () => { if (document.visibilityState === 'hidden' && this.world && this.settings.autosaveMonths > 0 && Date.now() - this.lastSaveAt > 20_000) this.doAutosave(true); };
+      document.addEventListener('visibilitychange', bg);
+      window.addEventListener('pagehide', bg);
+      window.addEventListener('error', (e) => console.error('[WORLD DOMINION]', e.message));
+    }
     onAchievement(id => { const a = ACHIEVEMENTS[id]; if (a) pushToast(`${a.icon} 업적 달성: ${a.name}`, 'major'); });
     onLog((text, type, c) => {
       const w = this.world; if (!w) return;
@@ -166,10 +176,18 @@ export class GameController {
     let days = 0;
     if (want > 0) {
       const t0 = performance.now();
-      const budget = 22; // ms / frame
-      while (days < want && (days === 0 || performance.now() - t0 < budget)) {
-        stepDay(w); this.afterDay(w); days++;
-        if (this.time.paused) break;
+      const budget = MOBILE ? 12 : 22; // ms / frame
+      try {
+        while (days < want && (days === 0 || performance.now() - t0 < budget)) {
+          stepDay(w); this.afterDay(w); days++;
+          if (this.time.paused) break;
+        }
+        this.errorCount = 0;
+      } catch (e) {
+        // 시뮬레이션 오류가 게임 전체를 멈추지 않도록 격리
+        console.error('[WORLD DOMINION] 시뮬레이션 오류', e);
+        this.errorCount++;
+        if (this.errorCount >= 3) { this.time.setSpeed(0); pushToast('시뮬레이션 오류로 일시정지했습니다. 저장 후 다시 시도하세요.', 'war'); this.errorCount = 0; }
       }
       this.time.consume(days);
       const el = performance.now() - t0;
@@ -208,16 +226,25 @@ export class GameController {
     if (m > 0) {
       const d = dateOf(w.startYear, w.day);
       const idx = (d.year - w.startYear) * 12 + d.month - 1;
-      if (d.day === 1 && idx - this.lastAutosaveMonth >= m) {
+      // 게임 시간 기준 + 실제 시간 최소 간격(고배속에서 저장 폭주 방지)
+      if (d.day === 1 && idx - this.lastAutosaveMonth >= m && Date.now() - this.lastSaveAt > (MOBILE ? 180_000 : 90_000)) {
         this.lastAutosaveMonth = idx;
-        autoSave(w).then(() => pushToast('자동 저장 완료', 'save')).catch(() => pushToast('자동 저장 실패', 'war'));
+        this.doAutosave(false);
       }
     }
+  }
+
+  /** 자동 저장 (동시 실행 방지) */
+  doAutosave(quiet: boolean) {
+    const w = this.world; if (!w || this.saving) return;
+    this.saving = true; this.lastSaveAt = Date.now();
+    autoSave(w).then(() => { if (!quiet) pushToast('자동 저장 완료', 'save'); }).catch(() => { if (!quiet) pushToast('자동 저장 실패', 'war'); }).finally(() => { this.saving = false; });
   }
 
   /** 즉시 하루 진행 (디버그/테스트) */
   stepOnce() { if (this.world) { stepDay(this.world); this.afterDay(this.world); this.mapVersion++; this.emit(); } }
 }
 
+const MOBILE = typeof window !== 'undefined' && (window.innerWidth < 760 || matchMedia('(pointer: coarse)').matches);
 export const game = new GameController();
 (globalThis as any).__game = game;
