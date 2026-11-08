@@ -4,7 +4,7 @@ import type { Selection } from '../systems/GameController';
 import { CELL } from './MapRenderer';
 import { countryLabelInfo, provinceOutline } from './ProvinceRenderer';
 import { cityTier } from '../data/defs';
-import { atWar } from '../simulation/WorldHelpers';
+import { atWar, alliesOf, enemiesOf } from '../simulation/WorldHelpers';
 import type { MapCamera } from './MapCamera';
 import { UnitSprites, FIGURE_ZOOM } from './UnitSprites';
 
@@ -31,12 +31,16 @@ export class MapLayers {
   private battleTexts: Text[] = [];
   stacks: UnitStack[] = [];
   sprites = new UnitSprites();
+  fronts = new Graphics();
+  diplo = new Graphics();
+  private frontSegs: number[] = [];
+  private frontAt = 0;
 
   constructor() {
     this.cities.addChild(this.cityG);
     this.units.addChild(this.unitG);
     this.battles.addChild(this.battleG);
-    this.root.addChild(this.select, this.labels, this.sprites.people, this.cities, this.arrows, this.sprites.g, this.sprites.fx, this.units, this.battles, this.brush);
+    this.root.addChild(this.fronts, this.diplo, this.select, this.labels, this.sprites.people, this.cities, this.arrows, this.sprites.g, this.sprites.fx, this.units, this.battles, this.brush);
   }
 
   updateLabels(w: WorldState, show: boolean) {
@@ -123,8 +127,8 @@ export class MapLayers {
     // 이동 화살표
     for (const d of w.divisions) {
       if (!d.path.length) continue;
-      const mine = w.player < 0 || d.owner === w.player || (selDivs && selDivs.has(d.id));
-      if (!mine && z < 1.5) continue;
+      const mine = (w.player >= 0 && d.owner === w.player) || (selDivs && selDivs.has(d.id));
+      if (!mine) continue;
       const p0 = w.provinces[d.province];
       let px = p0.cx * CELL, py = p0.cy * CELL;
       const col = selDivs && selDivs.has(d.id) ? 0xffffff : 0xffd24a;
@@ -195,6 +199,70 @@ export class MapLayers {
       tx.position.set(x, y); tx.scale.set(inv * pulse); tx.visible = true; ti++;
     }
     for (let i = ti; i < this.battleTexts.length; i++) this.battleTexts[i].visible = false;
+  }
+
+  /** 교전국 통제 지역 사이의 전선 (붉은 선) */
+  updateFronts(w: WorldState, cam: MapCamera, dirty: boolean): boolean {
+    const now = performance.now();
+    let done = !dirty;
+    if (dirty && now - this.frontAt > 450) {
+      done = true;
+      this.frontAt = now;
+      const segs: number[] = [];
+      if (w.wars.some(x => x.active)) {
+        const W = w.width, H = w.height, cp = w.cellProv, pr = w.provinces;
+        const cache = new Map<number, boolean>();
+        const hostile = (a: number, b: number) => {
+          if (a < 0 || b < 0 || a === b) return false;
+          const k = a < b ? a * 4096 + b : b * 4096 + a;
+          let v = cache.get(k); if (v === undefined) { v = atWar(w, a, b); cache.set(k, v); }
+          return v;
+        };
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y * W + x; const p = cp[i]; if (p < 0) continue;
+          const c = pr[p].controller;
+          if (x < W - 1) { const q = cp[i + 1]; if (q >= 0 && q !== p && hostile(c, pr[q].controller)) segs.push((x + 1) * CELL, y * CELL, (x + 1) * CELL, (y + 1) * CELL); }
+          if (y < H - 1) { const q = cp[i + W]; if (q >= 0 && q !== p && hostile(c, pr[q].controller)) segs.push(x * CELL, (y + 1) * CELL, (x + 1) * CELL, (y + 1) * CELL); }
+        }
+      }
+      this.frontSegs = segs;
+    }
+    const g = this.fronts; g.clear();
+    if (!this.frontSegs.length) return done;
+    const inv = 1 / cam.zoom; const s = this.frontSegs;
+    for (let i = 0; i < s.length; i += 4) g.moveTo(s[i], s[i + 1]).lineTo(s[i + 2], s[i + 3]);
+    g.stroke({ width: Math.max(1.2, 4 * inv), color: 0xff2a1a, alpha: 0.35 });
+    for (let i = 0; i < s.length; i += 4) g.moveTo(s[i], s[i + 1]).lineTo(s[i + 2], s[i + 3]);
+    g.stroke({ width: Math.max(0.6, 1.6 * inv), color: 0xff4a2a, alpha: 0.95 });
+    return done;
+  }
+
+  /** 선택 국가(또는 플레이어)의 동맹(파랑)·교전(빨강)·종속(보라) 관계선 */
+  updateDiplo(w: WorldState, sel: Selection, cam: MapCamera, mode: string) {
+    const g = this.diplo; g.clear();
+    let focus = sel.kind === 'country' ? sel.id : sel.kind === 'province' ? w.provinces[sel.id]?.owner ?? -1 : -1;
+    if (focus < 0 && w.player >= 0 && mode === 'diplomacy') focus = w.player;
+    const inv = 1 / cam.zoom;
+    const capXY = (c: number) => { const p = w.provinces[w.countries[c].capital]; return p ? [p.cx * CELL, p.cy * CELL] : null; };
+    const arc = (a: number[], b: number[], color: number, width: number, dash: boolean) => {
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 - Math.hypot(b[0] - a[0], b[1] - a[1]) * 0.18;
+      const N = 24; let px = a[0], py = a[1];
+      for (let k = 1; k <= N; k++) {
+        const t = k / N; const x = (1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * mx + t * t * b[0], y = (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * my + t * t * b[1];
+        if (!dash || k % 2) g.moveTo(px, py).lineTo(x, y);
+        px = x; py = y;
+      }
+      g.stroke({ width: width * inv, color, alpha: 0.85 });
+    };
+    if (mode === 'blocs') {
+      // 블록 모드: 모든 동맹선을 옅게
+      for (const t of w.treaties) if (t.type === 'alliance') { const a = capXY(t.a), b = capXY(t.b); if (a && b) arc(a, b, w.countries[t.a].color, 1.2, false); }
+      return;
+    }
+    if (focus < 0 || !w.countries[focus]?.alive) return;
+    const o = capXY(focus); if (!o) return;
+    for (const a of alliesOf(w, focus)) { const b = capXY(a); if (b) arc(o, b, w.countries[a].overlord === focus ? 0xb07aff : 0x4aa8ff, 2, false); }
+    for (const e of enemiesOf(w, focus)) { const b = capXY(e); if (b) arc(o, b, 0xff3a2a, 2.4, true); }
   }
 
   updateSelection(w: WorldState, sel: Selection, cam: MapCamera) {

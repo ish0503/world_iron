@@ -6,6 +6,7 @@ import { MapRenderer } from '../map/MapRenderer';
 import { listSaves, loadFromDB, type SaveMeta } from '../systems/SaveSystem';
 import { pushToast } from '../systems/EventManager';
 import { useGame } from '../hooks/useGame';
+import { SCENARIOS } from '../data/scenarios';
 
 const YEARS = [{ y: 1450, n: '1450 — 대항해 이전' }, { y: 1700, n: '1700 — 근세' }, { y: 1836, n: '1836 — 산업 혁명기' }, { y: 1936, n: '1936 — 세계대전 전야' }, { y: 1990, n: '1990 — 현대' }, { y: 2030, n: '2030 — 근미래' }];
 
@@ -36,12 +37,13 @@ export function MainMenu({ onStart }: { onStart: () => void }) {
   const [editor, setEditor] = useState(false);
   const [real, setReal] = useState(false);
   const [density, setDensity] = useState(1);
+  const [scenario, setScenario] = useState('');
   useEffect(() => { listSaves().then(setSaves).catch(() => {}); }, []);
 
   const create = async () => {
     const p = WORLD_PRESETS[preset];
     try {
-      await game.generate({ seed, width: p.width, height: p.height, provinces: p.provinces, countries, startYear: real ? 2025 : year, landRatio: land / 100, name: real ? '실제 세계 2025' : name, real, density });
+      await game.generate({ seed, width: p.width, height: p.height, provinces: p.provinces, countries, startYear: real ? 2025 : year, landRatio: land / 100, name: real ? (SCENARIOS.find(s => s.id === scenario)?.name ?? '실제 세계 2025') : name, real, density, scenario: real && scenario ? scenario : undefined });
       onStart();
       if (editor) { game.setMode('editor'); game.time.setSpeed(0); ui.set({ panel: 'editor', modal: null }); }
       else ui.set({ modal: 'modeSelect' });
@@ -64,7 +66,7 @@ export function MainMenu({ onStart }: { onStart: () => void }) {
         {tab === 'main' ? (
           <div className="menucol">
             {saves[0] && <button className="btn primary big" onClick={() => cont(saves[0].id)}>이어하기 <span className="small">{saves[0].name} · {saves[0].gameDate}</span></button>}
-            <button className="btn primary big" onClick={() => { setEditor(false); setReal(true); setTab('new'); }}>실제 세계 2025 <span className="small">178개 실제 국가 · 실제 국경</span></button>
+            <button className="btn primary big" onClick={() => { setEditor(false); setReal(true); setTab('new'); }}>실제 세계 지도 <span className="small">2025 현대 · 1914 · 1939 · 1962 시나리오</span></button>
             <button className="btn primary big" onClick={() => { setEditor(false); setReal(false); setTab('new'); }}>가상 세계 생성 <span className="small">무작위 대륙과 국가</span></button>
             <button className="btn big" onClick={() => { setEditor(true); setTab('new'); }}>시나리오 편집기</button>
             <button className="btn big" onClick={() => ui.set({ modal: 'save' })}>불러오기</button>
@@ -77,6 +79,13 @@ export function MainMenu({ onStart }: { onStart: () => void }) {
               <div className="seg two"><button className={real ? 'on' : ''} onClick={() => setReal(true)}>🌍 실제 세계<span className="small">2025년 국경</span></button><button className={!real ? 'on' : ''} onClick={() => setReal(false)}>🎲 가상 세계<span className="small">무작위 생성</span></button></div>
             </div>
             {real ? (<>
+              <div className="field">시나리오
+                <div className="scenlist">
+                  {[{ id: '', emoji: '🌍', name: '2025 현대 세계', desc: '178개 실제 국가, NATO·CSTO, 핵보유국, 현대의 갈등.' }, ...SCENARIOS].map(s => (
+                    <button key={s.id} className={scenario === s.id ? 'on' : ''} onClick={() => setScenario(s.id)}><b>{s.emoji} {s.name}</b><span className="small muted">{s.desc}</span></button>
+                  ))}
+                </div>
+              </div>
               <div className="field">지역 세분화
                 <div className="seg">{[[0.7, '간략', '약 600'], [1, '보통', '약 850'], [1.4, '세밀', '약 1200']].map(([v, n, k]) => <button key={n as string} className={density === v ? 'on' : ''} onClick={() => setDensity(v as number)}>{n}<span className="small">{k}지역</span></button>)}</div>
               </div>

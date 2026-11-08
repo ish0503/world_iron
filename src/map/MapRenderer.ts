@@ -4,6 +4,7 @@ import { TERRAINS, T } from '../data/terrain';
 import { GOVS, RESOURCES } from '../data/defs';
 import { getRel, atWar, hasTreaty, alliesOf, enemiesOf } from '../simulation/WorldHelpers';
 import { computeSupply } from '../simulation/MilitarySimulation';
+import { computeBlocs } from '../simulation/Blocs';
 
 export const CELL = 4;
 
@@ -117,6 +118,8 @@ export class MapRenderer {
     if (mode === 'tech') for (const c of w.countries) if (c.alive) { const a = avgTech(c.id); techMin = Math.min(techMin, a); techMax = Math.max(techMax, a); }
     const focusAllies = o.focus >= 0 ? new Set(alliesOf(w, o.focus)) : new Set<number>();
     const focusEnemies = o.focus >= 0 ? new Set(enemiesOf(w, o.focus)) : new Set<number>();
+    const blocs = mode === 'blocs' ? computeBlocs(w) : null;
+    const atWarSet = new Set<number>(); if (mode === 'blocs') for (const war of w.wars) if (war.active) for (const x of [...war.attackers, ...war.defenders]) atWarSet.add(x);
     for (const p of w.provinces) {
       const id = p.id;
       this.stripe[id] = -1;
@@ -157,6 +160,9 @@ export class MapRenderer {
         case 'government': if (c) { col = GOVS[c.gov].color; mix = 0.78; } break;
         case 'resource': col = p.resource ? RESOURCES[p.resource].color : 0x3a3f46; mix = p.resource ? 0.85 : 0.55; if (p.resource === 'food') col = 0xb8d040; break;
         case 'supply': if (supply) { const s = supply[id]; const g = grad(GOODBAD, 1 - s); col = s > 0 ? (g[0] << 16) | (g[1] << 8) | g[2] : 0x303030; mix = 0.8; } break;
+        case 'blocs':
+          if (c && blocs) { const b = blocs.of[own]; col = b >= 0 ? blocs.blocs[b].color : 0x5a5f66; mix = b >= 0 ? (own === blocs.blocs[b].leader ? 0.85 : 0.68) : 0.55; if (atWarSet.has(own) && p.controller !== own && p.controller >= 0) this.stripe[id] = 0xff2a2a; }
+          break;
         case 'unrest': { const g = grad(GOODBAD, p.unrest / 100); col = c ? (g[0] << 16) | (g[1] << 8) | g[2] : -1; mix = 0.8; break; }
       }
       if (o.highlight >= 0 && own === o.highlight && col >= 0) { const [r, g, b] = rgb(col); col = (Math.min(255, r + 40) << 16) | (Math.min(255, g + 40) << 8) | Math.min(255, b + 40); mix = Math.min(0.85, mix + 0.12); }

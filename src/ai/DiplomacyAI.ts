@@ -6,7 +6,7 @@ import {
   getRel, hasTreaty, atWar, alliesOf, countryNeighbors, warsOf, isAtWar,
 } from '../simulation/WorldHelpers';
 import { diplomacy, blocPower, powerOf } from '../simulation/DiplomacySimulation';
-import { warScore, aiPeaceTerms, applyPeace, sideOf, peaceCost } from '../simulation/WarSimulation';
+import { warScore, aiPeaceTerms, applyPeace, sideOf, peaceCost, controlledShare } from '../simulation/WarSimulation';
 import { nuclearBloc } from '../simulation/Extras';
 
 /** 외교 AI: 동맹 추진, 관계 관리, 조약, 개전 판단 */
@@ -17,7 +17,8 @@ export function diplomacyAI(w: WorldState, c: Country) {
   // 위협 평가
   const threats = nbs.filter(n => getRel(w, c.id, n) < -25 && blocPower(w, n) > blocPower(w, c.id) * 0.9);
   // 1) 위협 → 동맹 추진
-  if ((threats.length || c.goals.some(g => g.type === 'alliance')) && alliesOf(w, c.id).length < 3 && chance(0.35 * P.diplo)) {
+  const blocSeek = !threats.length && alliesOf(w, c.id).length < 2 && chance(0.05 * P.diplo);
+  if ((threats.length || blocSeek || c.goals.some(g => g.type === 'alliance')) && alliesOf(w, c.id).length < 5 && chance(0.45 * P.diplo)) {
     const goalT = c.goals.find(g => g.type === 'alliance')?.target;
     const cands = live.filter(x => !hasTreaty(w, 'alliance', c.id, x.id) && !atWar(w, c.id, x.id) && getRel(w, c.id, x.id) > 20 && !threats.includes(x.id))
       .sort((a, b) => (b.id === goalT ? 50 : 0) + getRel(w, c.id, b.id) + b.militaryPower * 0.5 - (a.id === goalT ? 50 : 0) - getRel(w, c.id, a.id) - a.militaryPower * 0.5);
@@ -124,7 +125,8 @@ export function peaceAI(w: WorldState, c: Country) {
     const age = w.day - war.start;
     const otherIsPlayer = other === w.player && w.mode === 'ruler';
     // 승리 측: 조건 제시
-    if (score > 25 && (age > 300 || score > 55)) {
+    const crushed = controlledShare(w, other) < 0.15;
+    if (score > 30 && (age > 600 || (score > 90 && age > 400) || (crushed && age > 420))) {
       const terms = aiPeaceTerms(w, war, c.id, false);
       const cost = peaceCost(w, terms);
       if (otherIsPlayer) {
@@ -134,20 +136,20 @@ export function peaceAI(w: WorldState, c: Country) {
         }
         continue;
       }
-      if (cost <= score * 1.1 + O.warExhaustion * 0.3 || O.warExhaustion > 70) { applyPeace(w, war, side, terms); continue; }
+      if ((cost <= score * 1.1 + O.warExhaustion * 0.3 && (O.warExhaustion > 40 || crushed)) || O.warExhaustion > 85) { applyPeace(w, war, side, terms); continue; }
     }
     // 장기전/소모전: 백색 평화
-    const exhausted = c.warExhaustion > 55 || (age > 365 * 4 && Math.abs(score) < 20);
+    const exhausted = c.warExhaustion > 70 || (age > 365 * 5 && Math.abs(score) < 20);
     if (exhausted && Math.abs(score) < 25) {
       if (otherIsPlayer) {
         if (!w.offers.some(o => o.kind === 'peace' && o.warId === war.id))
           w.offers.push({ id: w.nextId.offer++, from: c.id, to: other, kind: 'peace', warId: war.id, expires: w.day + 30, text: `${c.name}이(가) 백색 평화(현상 유지)를 제안했습니다.` });
         continue;
       }
-      if (O.warExhaustion > 35 || age > 365 * 5) { applyPeace(w, war, null, null); continue; }
+      if (O.warExhaustion > 50 || age > 365 * 6) { applyPeace(w, war, null, null); continue; }
     }
     // 패배 측: 양보 제안
-    if (score < -40 && (c.warExhaustion > 45 || score < -65) && !otherIsPlayer) {
+    if (age > 365 && score < -45 && (c.warExhaustion > 65 || score < -75) && !otherIsPlayer) {
       const terms = aiPeaceTerms(w, war, other, false);
       applyPeace(w, war, side === 'A' ? 'D' : 'A', terms);
     }

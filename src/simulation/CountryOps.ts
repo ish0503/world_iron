@@ -107,13 +107,17 @@ export function createCountry(w: WorldState, provs: number[], opts: CreateOpts =
     pr.owner = id; pr.controller = id; pr.construction = null;
     if (!pr.cores.includes(id)) pr.cores.push(id);
     pr.unrest = 20;
-    for (const d of w.divisions) if (d.province === p && d.owner !== id) evacuate(w, d.id);
+    for (const d of w.divisions) if (d.province === p && d.owner !== id) {
+      // 반란: 해당 지역 주둔군 일부가 반란군에 합류
+      if (opts.rebel && src && d.owner === src.id && rand() < 0.6) { d.owner = id; d.path = []; d.battle = -1; d.aiControlled = true; continue; }
+      evacuate(w, d.id);
+    }
     if (old >= 0 && w.countries[old].capital === p) relocateCapital(w, old);
   }
   for (const p of valid) { const pr = w.provinces[p]; void pr; }
   if (src) checkDeath(w, src.id);
   // 초기 부대
-  const nd = Math.max(1, Math.round(valid.length * 0.5));
+  const nd = Math.max(1, Math.round(valid.length * (opts.rebel ? 0.6 : 0.9)));
   for (let i = 0; i < nd; i++) spawnDivision(w, id, 'infantry', valid[i % valid.length]);
   c.manpower = c.population * 0.01;
   return id;

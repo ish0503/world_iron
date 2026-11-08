@@ -121,8 +121,9 @@ export function aiAccepts(w: WorldState, to: number, from: number, action: Diplo
   switch (action) {
     case 'nap': return { accept: rel > -10 && (rel + (threatened ? 20 : 0) + P.diplo * 10 > 15), why: '관계가 충분하지 않습니다' };
     case 'alliance': {
-      if (alliesOf(w, to).length >= 4 || alliesOf(w, from).length >= 4) return { accept: false, why: '이미 동맹이 너무 많습니다' };
-      const score = rel - 40 + (commonEnemy ? 25 : 0) + (threatened ? 15 : 0) + P.diplo * 8 - (T.personality === 'isolationist' ? 40 : 0) + (F.militaryPower > T.militaryPower ? 10 : 0);
+      if (alliesOf(w, to).length >= 5 || alliesOf(w, from).length >= 5) return { accept: false, why: '이미 동맹이 너무 많습니다' };
+      const sameBloc = (['democracy', 'republic', 'constitutional', 'federation'].includes(T.gov)) === (['democracy', 'republic', 'constitutional', 'federation'].includes(F.gov));
+      const score = rel - 35 + (sameBloc ? 10 : -5) + (commonEnemy ? 25 : 0) + (threatened ? 15 : 0) + P.diplo * 8 - (T.personality === 'isolationist' ? 40 : 0) + (F.militaryPower > T.militaryPower ? 10 : 0);
       return { accept: rel >= 35 && score > 0, why: '동맹을 맺을 만큼 신뢰하지 않습니다' };
     }
     case 'econ': return { accept: rel >= 25 && T.personality !== 'isolationist', why: '경제 협력에 관심이 없습니다' };

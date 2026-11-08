@@ -95,6 +95,8 @@ export interface Country {
   realName?: string;
   /** 1인당 생산성 배율 (실제 세계) */
   productivity?: number;
+  /** 이번 전쟁에서 수도 함락 횟수 */
+  capLost?: number;
   autoResearch?: boolean;
   avgUnrest?: number;
   lastCrisis?: number;

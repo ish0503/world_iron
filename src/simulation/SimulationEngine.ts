@@ -17,6 +17,7 @@ import { setRel, getRel, addTreaty, countryNeighbors, chronicle, ensureRelSize }
 import { UNITS } from '../data/defs';
 import { techBaseForYear } from './WorldGen';
 import { applyRealDiplomacy } from './RealWorld';
+import { SCENARIOS } from '../data/scenarios';
 
 setCaptureHook(onCaptured);
 let achievementHook: (id: string) => void = () => {};
@@ -77,10 +78,12 @@ export function setupWorld(w: WorldState) {
     if (c.tech.military >= 2) { c.planes.fighter = Math.round(20 + rand() * 60); c.planes.bomber = Math.round(rand() * 30); }
     c.history.push({ d: 0, gdp: c.gdp, pop: c.population, mil: 0, prov: own.length });
   }
-  if (w.scenario === 'real') { applyRealDiplomacy(w, (o, t, p) => { spawnDivision(w, o, t as keyof typeof UNITS, p, 0.95); }); for (const c of live) { c.history = [{ d: 0, gdp: c.gdp, pop: c.population, mil: 0, prov: c.provinceCount }]; } }
+  if ((w as any)._real) { applyRealDiplomacy(w, (o, t, p) => { spawnDivision(w, o, t as keyof typeof UNITS, p, 0.95); }); for (const c of live) { c.history = [{ d: 0, gdp: c.gdp, pop: c.population, mil: 0, prov: c.provinceCount }]; } }
   countryStats(w);
   // 시작 시점에 이미 도달한 기술은 '세계 최초' 기록에서 제외
   for (const c of live) for (const [f, lv] of Object.entries(c.tech)) for (let l = 0; l <= lv; l++) w.firsts[`${f}-${l}`] = true;
+  const scen = SCENARIOS.find(s => s.id === w.scenario);
+  if (scen) chronicle(w, 'war', scen.name, scen.desc, [], true);
   chronicle(w, 'nation', '세계의 시작', `${w.startYear}년, ${live.length}개 국가가 ${w.provinces.filter(p => p.active).length}개 지역에서 역사를 시작한다.`, [], true);
   const top = [...live].sort((a, b) => b.gdp - a.gdp).slice(0, 3);
   chronicle(w, 'nation', '열강의 등장', `세계 3대 경제 대국: ${top.map(c => c.name).join(', ')}.`, top.map(c => c.id), false);

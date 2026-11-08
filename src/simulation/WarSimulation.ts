@@ -4,7 +4,7 @@ import { TERRAINS } from '../data/terrain';
 import { UNITS } from '../data/defs';
 import { rand, clamp } from './rng';
 import {
-  atWar, alliesOf, warsOf, hasTreaty, bumpControl, addTreaty, removeTreaty, addRel, getRel, setRel, chronicle, cname, logEvent,
+  atWar, alliesOf, warsOf, hasTreaty, bumpControl, countryNeighbors, addTreaty, removeTreaty, addRel, getRel, setRel, chronicle, cname, logEvent,
 } from './WorldHelpers';
 import { airPower } from './EconomySimulation';
 import { transferProvince, changeGovernment, createCountry, checkDeath, relocateCapital } from './CountryOps';
@@ -44,14 +44,14 @@ export function declareWar(w: WorldState, attacker: number, defender: number, go
   for (const c of callD) {
     if (c === attacker || !w.countries[c]?.alive || war.attackers.includes(c)) continue;
     const C = w.countries[c];
-    const willing = C.overlord === defender || D.overlord === c || getRel(w, c, defender) > 30 - (C.personality === 'isolationist' ? -40 : 0) || hasTreaty(w, 'guarantee', c, defender, true);
+    const willing = C.overlord === defender || D.overlord === c || getRel(w, c, defender) > (C.personality === 'isolationist' ? 40 : 0) || hasTreaty(w, 'guarantee', c, defender, true);
     if (willing && !(hasTreaty(w, 'alliance', c, attacker))) joinWar(w, war, c, 'D');
   }
   const callA = alliesOf(w, attacker);
   for (const c of callA) {
     if (war.defenders.includes(c) || war.attackers.includes(c) || !w.countries[c]?.alive) continue;
     const C = w.countries[c];
-    const aggressive = C.overlord === attacker || (getRel(w, c, attacker) > 50 && getRel(w, c, defender) < 0 && C.personality !== 'pacifist' && C.personality !== 'isolationist');
+    const aggressive = C.overlord === attacker || (getRel(w, c, attacker) > 30 && getRel(w, c, defender) < 20 && C.personality !== 'pacifist' && C.personality !== 'isolationist');
     if (aggressive && !hasTreaty(w, 'alliance', c, defender)) joinWar(w, war, c, 'A');
   }
   checkWorldWar(w, war);
@@ -72,8 +72,9 @@ export function joinWar(w: WorldState, war: War, c: number, side: 'A' | 'D') {
 function checkWorldWar(w: WorldState, war: War) {
   if ((war as any).world) return;
   const n = war.attackers.length + war.defenders.length;
-  const powers = [...war.attackers, ...war.defenders].filter(c => w.countries[c].provinceCount >= 12).length;
-  if (n >= 6 && powers >= 3) {
+  const ranked = w.countries.filter(c => c.alive).sort((a, b) => b.militaryPower - a.militaryPower).slice(0, 7).map(c => c.id);
+  const gpA = war.attackers.filter(c => ranked.includes(c)).length, gpD = war.defenders.filter(c => ranked.includes(c)).length;
+  if (n >= 8 && gpA >= 1 && gpD >= 1 && gpA + gpD >= 4) {
     (war as any).world = true;
     w.worldWarCount++;
     const old = war.name;
@@ -178,10 +179,10 @@ export function dailyBattles(w: WorldState) {
     const Pdef = pd.raw * F * E * R * M_d * (0.4 + 0.6 * pd.sup) * airMulD;
     // 피해 계산
     const brkRatio = clamp(pa.brk / Math.max(1, pd.raw), 0, 1.5);
-    const lossD = Patk * 22 * (0.8 + rand() * 0.4);
-    const lossA = Pdef * 22 * (0.8 + rand() * 0.4) * (1 - Math.min(0.5, brkRatio * 0.3));
-    const orgD = 0.04 * Patk / Math.max(1, Pdef) + 0.01;
-    const orgA = 0.04 * Pdef / Math.max(1, Patk) + 0.02;
+    const lossD = Patk * 12 * (0.8 + rand() * 0.4);
+    const lossA = Pdef * 12 * (0.8 + rand() * 0.4) * (1 - Math.min(0.5, brkRatio * 0.3));
+    const orgD = 0.022 * Patk / Math.max(1, Pdef) + 0.006;
+    const orgA = 0.022 * Pdef / Math.max(1, Patk) + 0.012;
     applyLoss(D, lossD, orgD);
     applyLoss(A, lossA, orgA);
     b.attackerLoss += lossA; b.defenderLoss += lossD;
@@ -189,8 +190,8 @@ export function dailyBattles(w: WorldState) {
     p.devastation = Math.min(1, p.devastation + 0.004);
     ca.population -= 0; // 통계는 월간
     addCasualties(w, A[0].owner, lossA, D[0].owner, lossD);
-    ca.warExhaustion = Math.min(100, ca.warExhaustion + lossA / Math.max(1, ca.population) * 400);
-    cd.warExhaustion = Math.min(100, cd.warExhaustion + lossD / Math.max(1, cd.population) * 400);
+    ca.warExhaustion = Math.min(100, ca.warExhaustion + lossA / Math.max(1, ca.population) * 250);
+    cd.warExhaustion = Math.min(100, cd.warExhaustion + lossD / Math.max(1, cd.population) * 250);
     const avgOrgA = avg(A.map(d => d.org)), avgOrgD = avg(D.map(d => d.org));
     b.lastResult = `공격 ${Patk.toFixed(0)} vs 방어 ${Pdef.toFixed(0)}`;
     const duration = w.day - b.start;
@@ -200,7 +201,7 @@ export function dailyBattles(w: WorldState) {
       retreat(w, D, b.province);
       for (const d of A) d.battle = -1;
       endBattleRecord(w, b, true);
-    } else if (avgOrgA < 0.12 || pa.str < 500 || duration > 90) {
+    } else if (avgOrgA < 0.12 || pa.str < 500 || duration > 120) {
       finished.push(b.id);
       for (const d of A) { d.battle = -1; d.path = []; d.progress = 0; }
       for (const d of D) d.battle = -1;
@@ -281,12 +282,12 @@ export function onCaptured(w: WorldState, pid: number, by: number) {
   if (c.capital === pid && p.controller !== owner) {
     const repeat = c.lastCrisis !== undefined && w.day - c.lastCrisis < 120;
     c.lastCrisis = w.day;
-    if (repeat) { logEvent(w, `${c.shortName} 임시 수도 ${p.name} 함락`, 'war', owner); relocateCapital(w, owner); checkCapitulation(w, owner); return; }
+    if (repeat) { logEvent(w, `${c.shortName} 임시 수도 ${p.name} 함락`, 'war', owner); c.capLost = (c.capLost || 0) + 1; relocateCapital(w, owner); return; }
     chronicle(w, 'war', `${c.shortName} 수도 함락`, `${cname(w, by)} 군이 ${c.name}의 수도 ${p.name}을(를) 점령했다.`, [owner, by], true, pid);
     c.stability -= 12; c.legitimacy -= 10;
+    c.capLost = (c.capLost || 0) + 1;
     relocateCapital(w, owner);
   }
-  checkCapitulation(w, owner);
 }
 
 export function controlledShare(w: WorldState, cid: number) {
@@ -298,12 +299,23 @@ export function controlledShare(w: WorldState, cid: number) {
 export function checkCapitulation(w: WorldState, cid: number) {
   const c = w.countries[cid]; if (!c.alive) return;
   const share = controlledShare(w, cid);
-  const capLost = w.provinces[c.capital]?.controller !== cid;
-  if (!(share < 0.15 || (capLost && share < 0.4))) return;
+  const capLost = (c.capLost || 0) > 0 || w.provinces[c.capital]?.controller !== cid;
+  const ws = warsOf(w, cid);
+  const age = ws.length ? w.day - Math.min(...ws.map(x => x.start)) : 0;
+  // 최소 전쟁 기간: 소국 3개월, 대국 6개월 이상 버틴다
+  const pm = c.population / 1e6;
+  const minAge = pm < 5 ? 120 : pm < 30 ? 270 : pm < 100 ? 450 : 700;
+  if (age < minAge) return;
+  const big = c.population >= 30e6 || c.provinceCount >= 15;
+  if (!(share < 0.1 || (capLost && share < 0.3 && (!big || c.warExhaustion > 60)) || (share < 0.2 && c.warExhaustion > 85))) return;
   for (const war of warsOf(w, cid)) {
     const side = sideOf(war, cid)!;
     const leader = side === 'A' ? war.leaderA : war.leaderD;
-    if (leader === cid) {
+    const mates = (side === 'A' ? war.attackers : war.defenders).filter(x => x !== cid && w.countries[x]?.alive);
+    const foes = side === 'A' ? war.defenders : war.attackers;
+    const pow = (l: number[]) => l.reduce((a, x) => a + (w.countries[x]?.militaryPower || 0), 0);
+    const fightOn = mates.length > 0 && pow(mates) > pow(foes) * 0.25;
+    if (leader === cid && !fightOn) {
       chronicle(w, 'war', `${c.shortName} 항복`, `${c.name}이(가) ${war.name}에서 항복했다.`, [cid], true);
       const winnerLeader = side === 'A' ? war.leaderD : war.leaderA;
       const terms = aiPeaceTerms(w, war, winnerLeader, true);
@@ -315,6 +327,11 @@ export function checkCapitulation(w: WorldState, cid: number) {
       for (const p of w.provinces) if (p.active && p.owner === cid && winners.includes(p.controller)) transferProvince(w, p.id, p.controller);
       for (const p of w.provinces) if (p.active && p.owner === cid) p.controller = cid;
       if (side === 'A') war.attackers = war.attackers.filter(x => x !== cid); else war.defenders = war.defenders.filter(x => x !== cid);
+      if (leader === cid) {
+        const nl = [...mates].sort((a, b) => w.countries[b].militaryPower - w.countries[a].militaryPower)[0];
+        if (side === 'A') war.leaderA = nl; else war.leaderD = nl;
+        logEvent(w, `${war.name}: ${cname(w, nl)}이(가) 전쟁을 이어간다`, 'war', nl);
+      }
       for (const e of winners) addTreaty(w, 'truce', cid, e, w.day + 365 * 5);
       chronicle(w, 'war', `${c.shortName} 개별 항복`, `${c.name}이(가) ${war.name}에서 이탈하며 점령지를 할양했다.`, [cid], false);
     }
@@ -343,7 +360,7 @@ export function aiPeaceTerms(w: WorldState, war: War, winner: number, total = fa
   if (total) {
     const lp = L.provinceCount;
     const allTaken = take.filter(p => w.provinces[p].owner === loserLeader).length >= lp;
-    if (allTaken && lp <= 7 && (W.personality === 'expansionist' || W.personality === 'militarist' || W.personality === 'revolutionary' || lp <= 4)) terms.annex = true;
+    if (allTaken && lp <= 5 && (W.personality === 'expansionist' || W.personality === 'militarist' || W.personality === 'revolutionary' || lp <= 4)) terms.annex = true;
     else {
       // 전면 병합 대신: 일부 할양 + 종속/정권교체/해방
       terms.takeProvinces = take.filter(p => w.provinces[p].cores.some(c => winners.includes(c)) || rand() < 0.5).slice(0, Math.max(1, Math.ceil(lp * 0.4)));
@@ -449,7 +466,49 @@ export function monthlyWar(w: WorldState) {
     const wars = warsOf(w, c.id);
     if (wars.length) {
       const share = controlledShare(w, c.id);
-      c.warExhaustion = Math.min(100, c.warExhaustion + 0.6 + (1 - share) * 4);
-    } else c.warExhaustion = Math.max(0, c.warExhaustion - 3);
+      c.warExhaustion = Math.min(100, c.warExhaustion + 0.35 + (1 - share) * 2.5);
+    } else { c.warExhaustion = Math.max(0, c.warExhaustion - 3); c.capLost = 0; }
+  }
+  for (const c of w.countries) if (c.alive && warsOf(w, c.id).length) checkCapitulation(w, c.id);
+  monthlyWarJoin(w);
+}
+
+/** 전쟁 확대: 동맹국 참전 요청, 기회주의적 참전, 종속국 자동 참전 */
+export function monthlyWarJoin(w: WorldState) {
+  if (w.rules.noWar) return;
+  for (const war of w.wars) {
+    if (!war.active) continue;
+    for (const c of w.countries) {
+      if (!c.alive || war.attackers.includes(c.id) || war.defenders.includes(c.id)) continue;
+      if (c.id === w.player && w.mode === 'ruler') continue;
+      const allies = new Set(alliesOf(w, c.id));
+      // 전쟁 주도국과 직접 동맹이거나, 교전국과 국경을 맞댄 동맹국만 참전 요청 대상
+      const nbs = countryNeighbors(w, c.id);
+      const withA = allies.has(war.leaderA) || war.attackers.some(a => allies.has(a) && war.defenders.some(d => nbs.has(d)));
+      const withD = allies.has(war.leaderD) || war.defenders.some(d => allies.has(d) && war.attackers.some(a => nbs.has(a)));
+      let side: 'A' | 'D' | null = null;
+      if (c.overlord >= 0 && war.attackers.includes(c.overlord)) side = 'A';
+      else if (c.overlord >= 0 && war.defenders.includes(c.overlord)) side = 'D';
+      else if (withD && !withA && rand() < 0.05) side = 'D';
+      else if (withA && !withD && rand() < 0.03) side = 'A';
+      else if (!withA && !withD && warsOf(w, c.id).length === 0 && c.stability > 40) {
+        // 기회주의 참전: 한쪽 진영에 강한 적대감
+        const relA = getRel(w, c.id, war.leaderA), relD = getRel(w, c.id, war.leaderD);
+        const aggr = c.personality === 'expansionist' || c.personality === 'militarist' || c.personality === 'hegemonic' || c.personality === 'revolutionary' ? 1 : 0.3;
+        const p = 0.012 * aggr * w.rules.aiAggression;
+        const touchD = war.defenders.some(d => nbs.has(d)), touchA = war.attackers.some(a => nbs.has(a));
+        if (relD < -55 && relA > 15 && touchD && rand() < p) side = 'A';
+        else if (relA < -55 && relD > 15 && touchA && rand() < p) side = 'D';
+      }
+      if (!side) continue;
+      const enemies = side === 'A' ? war.defenders : war.attackers;
+      const friends = side === 'A' ? war.attackers : war.defenders;
+      // 이미 압도적인 쪽에는 (종속국 외) 편승하지 않음
+      const pow = (l: number[]) => l.reduce((a, x) => a + (w.countries[x]?.militaryPower || 0), 0);
+      if (c.overlord < 0 && pow(friends) > pow(enemies) * 2.2) continue;
+      if (enemies.some(e => hasTreaty(w, 'alliance', c.id, e))) continue;
+      joinWar(w, war, c.id, side);
+      chronicle(w, 'war', `${c.shortName} 참전`, `${c.name}이(가) ${war.name}에 ${side === 'A' ? cname(w, war.leaderA) : cname(w, war.leaderD)} 측으로 참전했다.`, [c.id], c.provinceCount >= 8);
+    }
   }
 }

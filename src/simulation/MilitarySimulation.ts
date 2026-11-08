@@ -129,7 +129,7 @@ export function divisionSpeed(w: WorldState, d: Division) {
   let sp = u.speed * (1 + 0.05 * c.tech.transport);
   if ((u.oil > 0) && c.stock.oil <= 0 && !w.rules.infiniteResources) sp *= 0.5;
   sp *= 0.5 + 0.5 * d.supply;
-  return sp * 1.1;
+  return sp * 0.8;
 }
 
 function winterFactor(w: WorldState, pid: number) {
@@ -162,7 +162,7 @@ export function dailyMilitary(w: WorldState) {
     } else d.outOfSupplyDays = 0;
     if (d.battle < 0) {
       const base = (w.provinces[d.province].buildings.base || 0);
-      d.org = Math.min(1, d.org + 0.035 * d.supply * (1 + 0.15 * base));
+      d.org = Math.min(1, d.org + 0.026 * d.supply * (1 + 0.15 * base));
       d.morale = Math.min(1, d.morale + 0.005 * d.supply + (c.stability - 50) * 0.00005);
       d.equipment = Math.min(1, d.equipment + 0.004 * d.supply);
       // 병력 보충

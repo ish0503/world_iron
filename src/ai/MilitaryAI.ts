@@ -89,14 +89,14 @@ export function operationsAI(w: WorldState, c: Country) {
   const front = frontProvinces(w, c.id);
   const byProv = new Map<number, Division[]>();
   for (const d of mine) { if (!byProv.has(d.province)) byProv.set(d.province, []); byProv.get(d.province)!.push(d); }
-  const threshold = 1.35 / (0.6 + P.aggr * 0.4);
+  const threshold = 1.55 / (0.6 + P.aggr * 0.4);
   const capital = c.capital;
   // 1) 전선 부대: 공격 판단
   for (const [pid, divs] of byProv) {
     const p = w.provinces[pid];
     const targets = p.neighbors.filter(n => enemies.has(w.provinces[n].controller) || (w.provinces[n].owner === c.id && w.provinces[n].controller !== c.id && atWar(w, c.id, w.provinces[n].controller)));
     if (!targets.length) continue;
-    const idle = divs.filter(d => !d.path.length && d.org > 0.45);
+    const idle = divs.filter(d => !d.path.length && d.org > 0.6);
     if (!idle.length) continue;
     let best = -1, bestScore = 0;
     for (const t of targets) {

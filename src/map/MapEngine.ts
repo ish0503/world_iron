@@ -132,7 +132,7 @@ export class MapEngine {
           this.labelsDirty = true;
         }
       }
-      this.overlayDirty = true;
+      this.overlayDirty = true; this.frontDirty = true;
     }
     // 카메라 적용
     this.world.position.set(this.cam.x, this.cam.y);
@@ -150,6 +150,8 @@ export class MapEngine {
       this.layers.updateCities(w, this.cam);
       this.layers.updateUnits(w, this.cam, game.selection, game.settings.showUnits);
       this.layers.updateSelection(w, game.selection, this.cam);
+      this.frontDirty = !this.layers.updateFronts(w, this.cam, this.frontDirty); if (this.frontDirty) this.overlayDirty = true;
+      this.layers.updateDiplo(w, game.selection, this.cam, game.mapMode);
     }
     this.layers.updateBattles(w, this.cam, now / 1000);
     this.layers.sprites.update(w, this.cam, now / 1000, game.selection, game.settings.showUnits);
@@ -157,6 +159,7 @@ export class MapEngine {
     this.layers.drawBrush((this.hoverCell.x + 0.5) * CELL, (this.hoverCell.y + 0.5) * CELL, t.kind === 'terrain' ? t.radius : 0, this.cam, t.kind === 'terrain' && this.hoverCell.x >= 0);
   }
   private overlayDirty = true;
+  private frontDirty = true;
   private camPos = '';
 
   // ───── 입력 ─────

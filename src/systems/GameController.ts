@@ -13,7 +13,7 @@ import { pushToast } from './EventManager';
 
 export type MapMode =
   | 'political' | 'terrain' | 'population' | 'economy' | 'military' | 'diplomacy'
-  | 'religion' | 'culture' | 'climate' | 'tech' | 'government' | 'resource' | 'supply' | 'unrest';
+  | 'religion' | 'culture' | 'climate' | 'tech' | 'government' | 'resource' | 'supply' | 'unrest' | 'blocs';
 
 export type Selection =
   | { kind: 'none' }

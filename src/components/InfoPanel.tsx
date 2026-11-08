@@ -7,6 +7,8 @@ import { CountryLink, Section, Stat } from './panelkit';
 import { warScore } from '../simulation/WarSimulation';
 import { fmtDate } from '../simulation/Calendar';
 import { ACHIEVEMENTS } from '../simulation/Extras';
+import { computeBlocs } from '../simulation/Blocs';
+import { game } from '../systems/GameController';
 
 type Key = 'gdp' | 'population' | 'militaryPower' | 'provinceCount' | 'tech' | 'stability';
 
@@ -54,8 +56,17 @@ export function WarsPanel() {
   const g = useGame(); const w = g.world!;
   const active = w.wars.filter(x => x.active);
   const ended = w.wars.filter(x => !x.active).slice(-30).reverse();
+  const { blocs } = computeBlocs(w);
   return (
     <div>
+      <Section title={`동맹 블록 (${blocs.length})`}>
+        {blocs.slice(0, 8).map(b => (
+          <div key={b.id} className="bloc"><b style={{ color: '#' + b.color.toString(16).padStart(6, '0') }}>🛡 {b.name}</b> <span className="muted small">{b.members.length}개국 · 군사력 {b.power.toFixed(0)}</span>
+            <div className="tags">{b.members.slice(0, 14).map(m => <CountryLink key={m} id={m} />)}{b.members.length > 14 && <span className="muted small">외 {b.members.length - 14}</span>}</div></div>
+        ))}
+        {!blocs.length && <div className="muted">동맹 블록 없음</div>}
+        <button className="btn sm" onClick={() => { game.setMapMode('blocs'); }}>🗺 동맹 블록 지도 보기</button>
+      </Section>
       <Section title={`진행 중인 전쟁 (${active.length})`}>
         {active.map(war => {
           const sc = warScore(w, war);

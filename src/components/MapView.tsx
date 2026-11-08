@@ -8,6 +8,8 @@ import { TERRAINS } from '../data/terrain';
 import { fmtPop } from '../simulation/format';
 import { cityTier, RESOURCES } from '../data/defs';
 import { DISASTERS, type DisasterType } from '../simulation/EnvironmentSimulation';
+import { computeBlocs } from '../simulation/Blocs';
+import { WarHud } from './WarHud';
 
 const GOD_LABEL: Record<string, string> = { war: '⚔ 전쟁 강제: 공격국 → 대상국 순서로 클릭', merge: '🔗 통합: 주체 국가 → 흡수될 국가 순서로 클릭', createCountry: '🏳 국가 건국', independence: '🗽 지역 독립', deleteCountry: '✖ 국가 삭제', unclaim: '◻ 영토 해방', capital: '★ 수도 지정', city: '🏙 도시 건설', port: '⚓ 항구 건설', 'pop+': '👥 인구 증가', 'pop-': '💀 인구 감소', nuke: '☢ 핵 공격: 목표 지역 선택', resource: '⛏ 자원 설정', disaster: '🌋 자연재해' };
 
@@ -19,6 +21,7 @@ export const MAP_MODES: { id: MapMode; name: string; icon: string }[] = [
   { id: 'resource', name: '자원', icon: '⛏' },
   { id: 'military', name: '군사', icon: '⚔' },
   { id: 'supply', name: '보급', icon: '📦' },
+  { id: 'blocs', name: '동맹 블록', icon: '🛡' },
   { id: 'diplomacy', name: '외교', icon: '🤝' },
   { id: 'government', name: '정치 성향', icon: '🏛' },
   { id: 'religion', name: '종교', icon: '⛪' },
@@ -83,6 +86,7 @@ export function MapView() {
         </div>
       )}
       <MapLegend />
+      <WarHud />
     </div>
   );
 }
@@ -100,6 +104,10 @@ function MapLegend() {
     resource: Object.values(RESOURCES).map(r => ['#' + r.color.toString(16).padStart(6, '0'), r.name] as [string, string]),
     climate: [['#5a78e6', '한랭'], ['#78c85a', '온화'], ['#dc5032', '고온']],
   };
+  if (m === 'blocs' && g.world) {
+    const { blocs } = computeBlocs(g.world);
+    return <div className="legend">{blocs.slice(0, 6).map(b => <span key={b.id}><i style={{ background: '#' + b.color.toString(16).padStart(6, '0') }} />{b.name} ({b.members.length})</span>)}{!blocs.length && <span>동맹 블록 없음</span>}</div>;
+  }
   const it = items[m];
   if (!it) return null;
   return <div className="legend">{it.map(([c, n]) => <span key={n}><i style={{ background: c }} />{n}</span>)}</div>;
